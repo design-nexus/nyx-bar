@@ -60,10 +60,10 @@ pub enum NodeKind {
         #[serde(default)]
         children: Vec<Node>,
     },
-    /// One child at a time, by id.
+    /// One child at a time: `show` is the id of the one to show.
     Stack {
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        visible: Option<String>,
+        show: Option<String>,
         #[serde(default)]
         transition: Transition,
         #[serde(default)]
