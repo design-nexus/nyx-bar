@@ -1,5 +1,15 @@
 [package]
 name = "nyx-bar-core"
 version = "0.1.0"
+description = "Nyx Bar's logic without GTK: its layout file, arranging items, hiding for fullscreen"
 edition.workspace = true
 license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+nyx-desktop.workspace = true
+nyx-plugin = { path = "../nyx-plugin" }
+serde.workspace = true
+serde_json.workspace = true
+toml.workspace = true

@@ -1,5 +1,25 @@
 [package]
 name = "nyx-bar"
 version = "0.1.0"
+description = "Nyx Bar: a top bar for Hyprland whose every item is a plugin"
 edition.workspace = true
 license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "nyx-bar"
+path = "src/main.rs"
+
+[dependencies]
+async-channel.workspace = true
+gtk.workspace = true
+gtk4-layer-shell.workspace = true
+nyx-bar-core = { path = "../../crates/nyx-bar-core" }
+nyx-desktop = { git = "https://github.com/design-nexus/nyx-core.git", rev = "394ddf8193797cd1f420fac98b097d04fa75f0e2" }
+nyx-plugin = { path = "../../crates/nyx-plugin" }
+nyx-plugin-host = { path = "../../crates/nyx-plugin-host" }
+nyx-plugin-protocol = { path = "../../crates/nyx-plugin-protocol" }
+nyx-plugin-view = { path = "../../crates/nyx-plugin-view" }
+nyx-theme.workspace = true
+serde_json.workspace = true

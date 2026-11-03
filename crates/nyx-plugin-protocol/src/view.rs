@@ -396,6 +396,47 @@ impl Node {
         }
     }
 
+    /// Apply a patch's properties to the node with its id (so a host can draw the item
+    /// again later as it now looks). Returns whether the node was found.
+    pub fn apply_patch(&mut self, id: &str, set: &Map<String, Value>) -> bool {
+        fn walk(v: &mut Value, id: &str, set: &Map<String, Value>) -> bool {
+            let Value::Object(m) = v else { return false };
+            if m.get("id").and_then(Value::as_str) == Some(id) {
+                for (k, val) in set {
+                    m.insert(k.clone(), val.clone());
+                }
+                return true;
+            }
+            for key in ["children", "child"] {
+                match m.get_mut(key) {
+                    Some(Value::Array(a)) => {
+                        if a.iter_mut().any(|c| walk(c, id, set)) {
+                            return true;
+                        }
+                    }
+                    Some(c @ Value::Object(_)) => {
+                        if walk(c, id, set) {
+                            return true;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            false
+        }
+        let Ok(mut v) = serde_json::to_value(&*self) else { return false };
+        if !walk(&mut v, id, set) {
+            return false;
+        }
+        match serde_json::from_value(v) {
+            Ok(n) => {
+                *self = n;
+                true
+            }
+            Err(_) => false,
+        }
+    }
+
     /// Nodes in the tree, for the host's limits.
     pub fn count(&self) -> usize {
         let mut n = 0;
@@ -445,6 +486,21 @@ mod tests {
         assert_eq!(vec.commands.len(), 3);
         assert!(matches!(vec.commands[2], Draw::Rect { fill: Some(Paint::Linear { .. }), .. }));
         assert_eq!(node.count(), 4);
+    }
+
+    #[test]
+    fn patches_apply_to_stored_views() {
+        let mut node: Node = serde_json::from_value(json!({"node": "box", "children": [
+            {"node": "label", "id": "pct", "text": "1%"},
+            {"node": "scroll", "child": {"node": "label", "id": "deep", "text": "a"}}
+        ]}))
+        .unwrap();
+        let set = json!({"text": "42%"}).as_object().unwrap().clone();
+        assert!(node.apply_patch("pct", &set));
+        assert!(node.apply_patch("deep", &set));
+        assert!(!node.apply_patch("missing", &set));
+        let NodeKind::Label { text, .. } = &node.children()[0].kind else { panic!() };
+        assert_eq!(text, "42%");
     }
 
     #[test]

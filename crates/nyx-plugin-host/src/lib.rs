@@ -53,8 +53,8 @@ pub enum Report {
     Frames(frames::Buffers),
     /// The process ended without being asked to.
     Exited { status: String, stderr: String },
-    /// Turned off: crashed too often, or it can't run here.
-    Suspended { reason: String },
+    /// Turned off: crashed too often (`crashed`), or it can't run here.
+    Suspended { reason: String, crashed: bool },
     Warning(String),
 }
 
@@ -183,17 +183,17 @@ impl Supervisor {
 
     fn run(&mut self) {
         if self.sandboxed && !sandbox::available() {
-            self.report(Report::Suspended { reason: "the sandbox (bubblewrap) isn't available, so third-party plugins can't run".into() });
+            self.report(Report::Suspended { reason: "the sandbox (bubblewrap) isn't available, so third-party plugins can't run".into(), crashed: false });
             return;
         }
         let p = &self.spec.plugin.manifest.permissions;
         if self.sandboxed && !(p.session_talk.is_empty() && p.system_talk.is_empty()) && !proxy::available() {
-            self.report(Report::Suspended { reason: "it needs D-Bus, and xdg-dbus-proxy isn't installed".into() });
+            self.report(Report::Suspended { reason: "it needs D-Bus, and xdg-dbus-proxy isn't installed".into(), crashed: false });
             return;
         }
         let missing = self.spec.plugin.missing_needs();
         if !missing.is_empty() {
-            self.report(Report::Suspended { reason: format!("it needs {}, which isn't installed", missing.join(", ")) });
+            self.report(Report::Suspended { reason: format!("it needs {}, which isn't installed", missing.join(", ")), crashed: false });
             return;
         }
         let section = self.spec.plugin.manifest.section(self.spec.kind);
@@ -214,7 +214,7 @@ impl Supervisor {
         }
         if self.crashes.len() >= self.spec.limits.crashes {
             let mins = self.spec.limits.crash_window_secs / 60;
-            self.report(Report::Suspended { reason: format!("it stopped {} times in {mins} minutes", self.crashes.len()) });
+            self.report(Report::Suspended { reason: format!("it stopped {} times in {mins} minutes", self.crashes.len()), crashed: true });
             return true;
         }
         false
@@ -652,7 +652,7 @@ mod tests {
         loop {
             match rx.recv_blocking().unwrap() {
                 Report::Message(m) => return m,
-                Report::Suspended { reason } => panic!("suspended: {reason}"),
+                Report::Suspended { reason, .. } => panic!("suspended: {reason}"),
                 _ => {}
             }
         }
@@ -743,7 +743,8 @@ done
         loop {
             match rx.recv_blocking().unwrap() {
                 Report::Exited { .. } => exits += 1,
-                Report::Suspended { reason } => {
+                Report::Suspended { reason, crashed } => {
+                    assert!(crashed);
                     assert!(reason.contains("stopped 2 times"), "{reason}");
                     break;
                 }
