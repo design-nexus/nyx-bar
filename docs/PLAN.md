@@ -1,4 +1,3 @@
----
 # Nyx Bar
 
 ## Approach
