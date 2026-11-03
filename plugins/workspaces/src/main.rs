@@ -31,7 +31,7 @@ fn draw(plugin: &Plugin<Arc<Desktop>>, d: &Desktop, count: i64) {
         let mut buttons = vec![];
         for id in 1..=last.min(*USER_WORKSPACES.end()) {
             let urgent = d.windows.iter().any(|w| w.workspace == id && w.urgent);
-            let mut b = button(&id.to_string(), Some(&id.to_string()), None).id(&format!("ws-{id}")).class("workspace");
+            let mut b = button(&id.to_string(), Some(&id.to_string()), None).id(format!("ws-{id}")).class("workspace");
             b = if id == m.active_workspace {
                 b.class("active")
             } else if urgent {

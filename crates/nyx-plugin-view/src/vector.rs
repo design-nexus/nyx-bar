@@ -148,10 +148,8 @@ pub fn path(cr: &cairo::Context, d: &str) {
             if !cur.is_empty() {
                 toks.push(std::mem::take(&mut cur));
             }
-        } else if c == '-' && !cur.is_empty() && !cur.ends_with(['e', 'E']) {
-            toks.push(std::mem::take(&mut cur));
-            cur.push(c);
-        } else if c == '.' && cur.contains('.') {
+        } else if (c == '-' && !cur.is_empty() && !cur.ends_with(['e', 'E'])) || (c == '.' && cur.contains('.')) {
+            // A sign or a second point starts the next number ("1-2", "0.5.5").
             toks.push(std::mem::take(&mut cur));
             cur.push(c);
         } else {

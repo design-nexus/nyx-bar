@@ -51,5 +51,5 @@ fn main() -> std::process::ExitCode {
         }
     });
     let code = app.run_with_args::<&str>(&[]);
-    std::process::ExitCode::from(code.get() as u8)
+    std::process::ExitCode::from(code.get())
 }

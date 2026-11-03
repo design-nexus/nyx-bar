@@ -974,6 +974,19 @@ dependencies = [
 [[package]]
 name = "nyx-plugin-cli"
 version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-channel",
+ "libc",
+ "nyx-plugin",
+ "nyx-plugin-host",
+ "nyx-plugin-protocol",
+ "serde_json",
+ "sha2",
+ "toml",
+ "toml_edit",
+ "zbus",
+]
 
 [[package]]
 name = "nyx-plugin-host"

@@ -186,6 +186,10 @@ pub fn outer_exec(plugin_dir: &Path, exec: &[String]) -> Vec<OsString> {
     out
 }
 
+fn push(a: &mut Vec<OsString>, items: &[&str]) {
+    a.extend(items.iter().map(OsString::from));
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -219,8 +223,4 @@ mod tests {
         assert_eq!(inner_exec(t.path(), &["python3".into(), "main.py".into()]), vec!["python3", "main.py"]);
         assert_eq!(outer_exec(t.path(), &["run.sh".into()])[0], t.path().join("run.sh").into_os_string());
     }
-}
-
-fn push(a: &mut Vec<OsString>, items: &[&str]) {
-    a.extend(items.iter().map(OsString::from));
 }

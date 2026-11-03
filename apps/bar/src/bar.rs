@@ -375,7 +375,7 @@ pub fn sync_plugins(s: &Rc<Shared>) {
     for id in stale {
         debug(|| format!("stopping {id}"));
         s.plugins.borrow_mut().remove(&id);
-        s.css.borrow_mut().remove(&id).map(remove_provider);
+        if let Some(a) = s.css.borrow_mut().remove(&id) { remove_provider(a) }
     }
     for p in wanted {
         let id = p.manifest.id.clone();

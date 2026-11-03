@@ -1,5 +1,25 @@
 [package]
 name = "nyx-plugin-cli"
 version = "0.1.0"
+description = "`nyx plugin`: add, update, remove, enable and configure Nyx plugins"
 edition.workspace = true
 license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "nyx-plugin"
+path = "src/main.rs"
+
+[dependencies]
+anyhow.workspace = true
+async-channel.workspace = true
+libc.workspace = true
+nyx-plugin = { path = "../../crates/nyx-plugin" }
+nyx-plugin-host = { path = "../../crates/nyx-plugin-host" }
+nyx-plugin-protocol = { path = "../../crates/nyx-plugin-protocol" }
+serde_json.workspace = true
+sha2.workspace = true
+toml.workspace = true
+toml_edit.workspace = true
+zbus.workspace = true

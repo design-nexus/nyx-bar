@@ -63,7 +63,7 @@ pub fn encode(width: u32, height: u32, rgba: &[u8]) -> Vec<u8> {
 
 /// StatusNotifierItem pixmaps are ARGB32 in network byte order.
 pub fn argb_to_rgba(argb: &[u8]) -> Vec<u8> {
-    argb.chunks_exact(4).flat_map(|p| [p[1], p[2], p[3], p[0]]).collect()
+    argb.as_chunks::<4>().0.iter().flat_map(|p| [p[1], p[2], p[3], p[0]]).collect()
 }
 
 pub fn base64(data: &[u8]) -> String {

@@ -45,13 +45,12 @@ fn percent_decode(s: &str) -> String {
     let mut out = Vec::with_capacity(b.len());
     let mut i = 0;
     while i < b.len() {
-        if b[i] == b'%' && i + 2 < b.len() {
-            if let Ok(v) = u8::from_str_radix(&s[i + 1..i + 3], 16) {
+        if b[i] == b'%' && i + 2 < b.len()
+            && let Ok(v) = u8::from_str_radix(&s[i + 1..i + 3], 16) {
                 out.push(v);
                 i += 3;
                 continue;
             }
-        }
         out.push(b[i]);
         i += 1;
     }
@@ -117,7 +116,7 @@ fn main() {
     let (plugin, inputs) = Plugin::<Option<Player>>::start();
     let mut max = plugin.setting_i64("max_chars", 32).clamp(8, 120) as usize;
     let send = plugin.data();
-    mpris::watch(Duration::from_secs(5), move |p| send(p));
+    mpris::watch(Duration::from_secs(5), send);
     let mut current: Option<Player> = None;
     for input in inputs {
         match input {

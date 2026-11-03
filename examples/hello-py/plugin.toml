@@ -1,0 +1,19 @@
+# The hello plugin in Python, with the standard-library module sdk/python/nyx_plugin.py
+# copied beside it.
+id = "example.hello-py"
+name = "Hello (Python)"
+version = "0.1.0"
+author = "You"
+license = "MIT"
+description = "Says hello, counts clicks, and shows a popover with a slider."
+api_version = 1
+kinds = ["bar"]
+exec = ["python3", "hello.py"]
+needs = ["python3"]
+
+[bar]
+mode = "stream"
+section = "right"
+
+[settings]
+greeting = "Hello"
