@@ -1,0 +1,27 @@
+id = "nyx.media"
+name = "Now playing"
+version = "0.1.0"
+author = "Design Nexus"
+license = "MIT"
+description = "The track that's playing, with album art. Click for controls; middle-click plays or pauses. Hidden when nothing plays."
+api_version = 1
+kinds = ["bar"]
+exec = ["nyx-bar-media"]
+
+[permissions]
+# Documentation for this trusted plugin.
+session_talk = ["org.mpris.MediaPlayer2.*"]
+network = true
+
+[bar]
+mode = "stream"
+section = "right"
+
+[[bar.items]]
+id = "media"
+name = "Now playing"
+default = true
+
+[settings]
+# The longest the title can be in the bar, in characters.
+max_chars = 32

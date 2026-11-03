@@ -1,5 +1,13 @@
 [package]
 name = "nyx-bar-panels"
 version = "0.1.0"
+description = "Nyx Bar plugin: the Notification Center bell and the Control Center button"
 edition.workspace = true
 license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+nyx-plugin-sdk = { path = "../../crates/nyx-plugin-sdk", features = ["dbus"] }
+serde_json.workspace = true
+zbus.workspace = true

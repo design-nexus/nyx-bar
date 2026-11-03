@@ -1,0 +1,36 @@
+/* Plugin CSS is scoped to this plugin's items. */
+button.workspace {
+  min-width: 22px;
+  min-height: 22px;
+  padding: 0 4px;
+  margin: 0 1px;
+  border-radius: 7px;
+  background: none;
+  box-shadow: none;
+  font-weight: 500;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+
+button.workspace:hover {
+  background-color: @row_hover;
+}
+
+button.workspace.dim {
+  color: alpha(@theme_text, 0.45);
+}
+
+button.workspace.active {
+  background-color: alpha(@theme_accent, 0.22);
+  color: @theme_accent;
+  font-weight: 700;
+}
+
+button.workspace.urgent {
+  color: @theme_danger;
+  animation: urgent-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes urgent-pulse {
+  from { background-color: alpha(@theme_danger, 0.10); }
+  to { background-color: alpha(@theme_danger, 0.28); }
+}

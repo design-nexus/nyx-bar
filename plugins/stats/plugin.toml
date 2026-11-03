@@ -1,0 +1,26 @@
+id = "nyx.stats"
+name = "System stats"
+version = "0.1.0"
+author = "Design Nexus"
+license = "MIT"
+description = "CPU, memory, temperature and GPU. Click for the last few minutes as graphs; right-click opens Nyx Activity."
+api_version = 1
+kinds = ["bar"]
+exec = ["nyx-bar-stats"]
+
+[bar]
+mode = "stream"
+section = "right"
+
+[[bar.items]]
+id = "stats"
+name = "CPU, memory and temperature"
+default = true
+
+[settings]
+# Seconds between samples.
+every = 3
+# Small graphs in the bar instead of numbers.
+graphs = false
+# Show the GPU when one reports its load.
+gpu = true

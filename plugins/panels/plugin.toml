@@ -1,0 +1,29 @@
+id = "nyx.panels"
+name = "Panels"
+version = "0.1.0"
+author = "Design Nexus"
+license = "MIT"
+description = "Buttons for the Nyx Notification Center and Control Center."
+api_version = 1
+kinds = ["bar"]
+exec = ["nyx-bar-panels"]
+
+[permissions]
+# Documentation for this trusted plugin.
+session_talk = ["io.github.design_nexus.nyx.Notifications", "io.github.design_nexus.nyx.ControlCenter"]
+host_commands = [["nyx-notification-center", "--toggle"], ["nyx-control-center", "--toggle"]]
+
+[bar]
+mode = "stream"
+section = "right"
+
+[[bar.items]]
+id = "notifications"
+name = "Notifications"
+description = "A dot for unread notifications, crossed out in Do not disturb. Right-click switches Do not disturb."
+default = true
+
+[[bar.items]]
+id = "control-center"
+name = "Control Center"
+default = true

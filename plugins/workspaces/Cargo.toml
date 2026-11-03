@@ -1,5 +1,13 @@
 [package]
 name = "nyx-bar-workspaces"
 version = "0.1.0"
+description = "Nyx Bar plugin: Hyprland workspaces, per monitor"
 edition.workspace = true
 license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+nyx-desktop.workspace = true
+nyx-plugin-sdk = { path = "../../crates/nyx-plugin-sdk" }
+serde_json.workspace = true

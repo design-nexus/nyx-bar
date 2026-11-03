@@ -1,0 +1,22 @@
+id = "nyx.tray"
+name = "Tray"
+version = "0.1.0"
+author = "Design Nexus"
+license = "MIT"
+description = "Other apps' tray icons. Click activates an app; right-click shows its menu."
+api_version = 1
+kinds = ["bar"]
+exec = ["nyx-bar-tray"]
+
+[permissions]
+# Documentation for this trusted plugin.
+session_talk = ["org.kde.StatusNotifierWatcher", "*"]
+
+[bar]
+mode = "stream"
+section = "right"
+
+[[bar.items]]
+id = "tray"
+name = "Tray icons"
+default = true

@@ -1,5 +1,12 @@
 [package]
 name = "nyx-bar-system"
 version = "0.1.0"
+description = "Nyx Bar plugin: network, Bluetooth, volume and battery"
 edition.workspace = true
 license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+nyx-plugin-sdk = { path = "../../crates/nyx-plugin-sdk", features = ["network", "bluetooth", "audio", "power"] }
+serde_json.workspace = true

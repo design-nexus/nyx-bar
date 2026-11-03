@@ -1,0 +1,45 @@
+id = "nyx.system"
+name = "System status"
+version = "0.1.0"
+author = "Design Nexus"
+license = "MIT"
+description = "Network, Bluetooth, volume and battery. Click for quick controls; right-click opens the Control Center."
+api_version = 1
+kinds = ["bar"]
+exec = ["nyx-bar-system"]
+
+[permissions]
+# Documentation for this trusted plugin.
+system_talk = ["org.freedesktop.NetworkManager", "org.bluez", "org.freedesktop.UPower", "net.hadess.PowerProfiles"]
+
+[bar]
+mode = "stream"
+section = "right"
+
+[[bar.items]]
+id = "network"
+name = "Network"
+default = true
+
+[[bar.items]]
+id = "bluetooth"
+name = "Bluetooth"
+description = "Hidden on computers without Bluetooth."
+default = true
+
+[[bar.items]]
+id = "volume"
+name = "Volume"
+description = "Scroll to change it, right-click to mute."
+default = true
+
+[[bar.items]]
+id = "battery"
+name = "Battery"
+description = "Hidden on computers without a battery."
+default = true
+
+[settings]
+# Show the volume and battery percentages next to their icons.
+volume_percent = true
+battery_percent = true

@@ -1,5 +1,12 @@
 [package]
 name = "nyx-bar-stats"
 version = "0.1.0"
+description = "Nyx Bar plugin: CPU, memory, temperature and GPU"
 edition.workspace = true
 license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+nyx-plugin-sdk = { path = "../../crates/nyx-plugin-sdk" }
+serde_json.workspace = true

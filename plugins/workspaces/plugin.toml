@@ -1,0 +1,25 @@
+id = "nyx.workspaces"
+name = "Workspaces"
+version = "0.1.0"
+author = "Design Nexus"
+license = "MIT"
+description = "Hyprland's workspaces on each monitor: click to go to one, scroll to move along."
+api_version = 1
+kinds = ["bar"]
+exec = ["nyx-bar-workspaces"]
+
+[bar]
+mode = "stream"
+section = "left"
+per_monitor = true
+
+[[bar.items]]
+id = "workspaces"
+name = "Workspaces"
+default = true
+
+[settings]
+# Workspaces always shown; busier ones beyond this appear when they have windows.
+count = 5
+# Wrap from the last workspace to the first when scrolling.
+wrap = false

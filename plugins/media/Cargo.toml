@@ -1,5 +1,12 @@
 [package]
 name = "nyx-bar-media"
 version = "0.1.0"
+description = "Nyx Bar plugin: what's playing, over MPRIS"
 edition.workspace = true
 license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+nyx-plugin-sdk = { path = "../../crates/nyx-plugin-sdk", features = ["mpris"] }
+serde_json.workspace = true
