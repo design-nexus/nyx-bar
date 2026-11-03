@@ -1,0 +1,26 @@
+id = "nyx.weather"
+name = "Weather"
+version = "0.1.0"
+author = "Design Nexus"
+license = "MIT"
+description = "Current conditions from Nyx Weather."
+api_version = 1
+kinds = ["bar"]
+exec = ["sh", "weather.sh"]
+needs = ["nyx-weather"]
+
+[permissions]
+# Documentation for this trusted plugin; a third-party copy would need these.
+network = true
+host_commands = [["nyx-weather", "--toggle"], ["nyx-weather", "--section", "settings"]]
+
+[bar]
+mode = "interval"
+interval = 600
+section = "right"
+
+[[bar.items]]
+id = "now"
+name = "Current conditions"
+description = "Click opens Nyx Weather; right-click its settings."
+default = true

@@ -1,0 +1,15 @@
+# The smallest stream plugin: a greeting that counts clicks.
+# Try it:   nyx plugin link examples/hello && nyx plugin enable example.hello
+id = "example.hello"
+name = "Hello"
+version = "0.1.0"
+author = "You"
+license = "MIT"
+description = "Says hello and counts your clicks."
+api_version = 1
+kinds = ["bar"]
+exec = ["sh", "hello.sh"]
+
+[bar]
+mode = "stream"
+section = "right"

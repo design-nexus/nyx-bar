@@ -138,6 +138,7 @@ pub fn start(app: &gtk::Application, only: Option<String>) {
     let ws = Rc::downgrade(&s);
     std::mem::forget(watch::watch_local(move |u| {
         let Some(s) = ws.upgrade() else { return };
+        debug(|| format!("hyprland: {:?}, connected {}", u.changes, u.desktop.connected));
         *s.desktop.borrow_mut() = u.desktop.clone();
         if u.changes.monitors || s.bars.borrow().is_empty() {
             rebuild_bars(&s);
@@ -187,6 +188,8 @@ pub fn start(app: &gtk::Application, only: Option<String>) {
         }
     }
     sync_plugins(&s);
+    // Everything else holds the bar weakly; it lives as long as the app.
+    std::mem::forget(s);
 }
 
 // ---------- Files ----------
@@ -680,6 +683,10 @@ fn rebuild_bars(s: &Rc<Shared>) {
     let gmons: Vec<gdk::Monitor> = display.monitors().iter::<gdk::Monitor>().flatten().collect();
     let config = s.config.borrow().clone();
     let old: Vec<Rc<Bar>> = s.bars.borrow_mut().drain(..).collect();
+    debug(|| {
+        let names: Vec<String> = gmons.iter().map(|g| g.connector().map(|c| c.to_string()).unwrap_or_default()).collect();
+        format!("rebuild: hyprland {:?}, gdk {names:?}", desktop.monitors.iter().map(|m| &m.name).collect::<Vec<_>>())
+    });
     let mut bars = vec![];
     for m in desktop.monitors.iter().filter(|m| !m.disabled) {
         match &s.only {
@@ -795,11 +802,15 @@ fn relayout(s: &Rc<Shared>, b: &Rc<Bar>) {
         }
         for (plugin, item) in list {
             let key = (plugin.clone(), item.clone());
-            let w = b.widgets.borrow().get(&key).cloned().unwrap_or_else(|| {
-                let w = new_item_widget(s, b, plugin, item);
-                b.widgets.borrow_mut().insert(key.clone(), w.clone());
-                w
-            });
+            let existing = b.widgets.borrow().get(&key).cloned();
+            let w = match existing {
+                Some(w) => w,
+                None => {
+                    let w = new_item_widget(s, b, plugin, item);
+                    b.widgets.borrow_mut().insert(key.clone(), w.clone());
+                    w
+                }
+            };
             refresh_widget(s, b, plugin, item);
             bx.append(&w.root);
             keep.insert(key);

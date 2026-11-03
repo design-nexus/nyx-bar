@@ -1,0 +1,25 @@
+id = "nyx.clock"
+name = "Clock"
+version = "0.1.0"
+author = "Design Nexus"
+license = "MIT"
+description = "The time and date, with this month's calendar."
+api_version = 1
+kinds = ["bar"]
+exec = ["sh", "clock.sh"]
+needs = ["date"]
+
+[bar]
+mode = "interval"
+interval = 60
+section = "center"
+
+[[bar.items]]
+id = "time"
+name = "Time and date"
+description = "Click for this month's calendar."
+default = true
+
+[settings]
+# strftime(3) format.
+format = "%a %b %-d  %H:%M"
