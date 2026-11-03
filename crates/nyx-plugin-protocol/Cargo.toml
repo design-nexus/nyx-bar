@@ -1,0 +1,12 @@
+[package]
+name = "nyx-plugin-protocol"
+version = "0.1.0"
+description = "Messages between Nyx plugin hosts (bar, Control Center, desktop widgets) and plugins"
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true

@@ -1,0 +1,43 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/nyx-plugin-protocol",
+    "crates/nyx-plugin",
+    "crates/nyx-plugin-host",
+    "crates/nyx-plugin-view",
+    "crates/nyx-plugin-sdk",
+    "crates/nyx-bar-core",
+    "apps/bar",
+    "apps/plugin",
+    "plugins/workspaces",
+    "plugins/system",
+    "plugins/stats",
+    "plugins/panels",
+    "plugins/media",
+    "plugins/tray",
+]
+
+[workspace.package]
+edition = "2024"
+license = "MIT"
+authors = ["Ken Smith"]
+repository = "https://github.com/design-nexus/nyx-bar"
+
+[workspace.dependencies]
+anyhow = "1"
+async-channel = "2"
+gtk = { version = "0.11", package = "gtk4", features = ["v4_18"] }
+gtk4-layer-shell = "0.8"
+libc = "0.2"
+nyx-desktop = { git = "https://github.com/design-nexus/nyx-core.git", rev = "394ddf8193797cd1f420fac98b097d04fa75f0e2", default-features = false }
+nyx-theme = { git = "https://github.com/design-nexus/nyx-design.git", rev = "976fed940841a2a505ffe644f632cb60e12988a8" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+toml = "1"
+toml_edit = "0.25"
+zbus = { version = "5", default-features = false, features = ["blocking-api", "async-io"] }
+
+[profile.release]
+lto = "thin"
+strip = true
