@@ -136,6 +136,7 @@ pub fn start(app: &gtk::Application, only: Option<String>) {
         _dbus: RefCell::default(),
     });
     std::mem::forget(app.hold());
+    host::reap_stale(s.host_name());
     if let Some(display) = gdk::Display::default() {
         gtk::style_context_add_provider_for_display(&display, &s.user_css, gtk::STYLE_PROVIDER_PRIORITY_USER);
     }

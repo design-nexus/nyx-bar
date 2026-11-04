@@ -61,7 +61,17 @@ pub fn watch(f: impl Fn(Audio) + Send + 'static) {
             return;
         }
         loop {
-            let Ok(mut child) = Command::new("pactl").arg("subscribe").stdout(Stdio::piped()).stderr(Stdio::null()).spawn() else { return };
+            let mut cmd = Command::new("pactl");
+            cmd.arg("subscribe").stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::null());
+            // It goes when the plugin does.
+            unsafe {
+                use std::os::unix::process::CommandExt;
+                cmd.pre_exec(|| {
+                    libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGTERM);
+                    Ok(())
+                });
+            }
+            let Ok(mut child) = cmd.spawn() else { return };
             if let Some(out) = child.stdout.take() {
                 for line in std::io::BufReader::new(out).lines().map_while(Result::ok) {
                     if (line.contains("sink") || line.contains("source") || line.contains("server")) && trigger.send(()).is_err() {

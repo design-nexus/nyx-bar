@@ -115,6 +115,41 @@ impl Drop for Handle {
     }
 }
 
+/// A process's cgroup, when it's one of our plugin scopes (not the host's own).
+fn scope_cgroup(pid: u32) -> Option<std::path::PathBuf> {
+    // The scope exists once systemd-run has moved the process into it.
+    for _ in 0..50 {
+        if let Some(dir) = metrics::cgroup_dir(pid)
+            && dir.file_name().is_some_and(|n| n.to_string_lossy().starts_with("nyx-plugin-"))
+        {
+            return Some(dir);
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    None
+}
+
+/// Empty the plugin scopes a host of this name left behind when it died (another
+/// process id than ours). Call once at start.
+pub fn reap_stale(host: &str) {
+    let uid = unsafe { libc::getuid() };
+    let slice = std::path::PathBuf::from(format!("/sys/fs/cgroup/user.slice/user-{uid}.slice/user@{uid}.service/app.slice"));
+    let Ok(entries) = std::fs::read_dir(&slice) else { return };
+    let prefix = format!("nyx-plugin-{host}-");
+    let me = std::process::id().to_string();
+    for e in entries.flatten() {
+        let name = e.file_name().to_string_lossy().into_owned();
+        let Some(rest) = name.strip_prefix(&prefix).and_then(|r| r.strip_suffix(".scope")) else { continue };
+        // nyx-plugin-<host>-<id>-<host pid>-<run>
+        let mut parts = rest.rsplitn(3, '-');
+        let (_run, pid) = (parts.next(), parts.next());
+        let Some(pid) = pid else { continue };
+        if pid != me && !std::path::Path::new(&format!("/proc/{pid}")).exists() {
+            let _ = std::fs::write(e.path().join("cgroup.kill"), "1");
+        }
+    }
+}
+
 /// Whether the host may run a command a plugin's item asks for.
 pub fn allowed_command(plugin: &Plugin, argv: &[String]) -> bool {
     !argv.is_empty() && (plugin.trust.is_trusted() || plugin.manifest.permissions.host_commands.iter().any(|c| c == argv))
@@ -208,6 +243,8 @@ impl Gate {
 /// Resources made for one run, dropped (and cleaned up) with it.
 struct Run {
     child: Child,
+    /// The plugin's own scope, emptied when the run ends.
+    cgroup: Option<std::path::PathBuf>,
     stdin: Option<ChildStdin>,
     stderr: Arc<Mutex<VecDeque<String>>>,
     gate: Arc<Mutex<Gate>>,
@@ -344,6 +381,13 @@ impl Supervisor {
                 .env("NYX_PLUGIN_KIND", self.spec.kind.name());
         }
         cmd.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).process_group(0);
+        // The plugin dies with the host, even when the host is killed outright.
+        unsafe {
+            cmd.pre_exec(|| {
+                libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGKILL);
+                Ok(())
+            });
+        }
         cmd
     }
 
@@ -427,7 +471,8 @@ impl Supervisor {
                 }
             }
         });
-        Ok(Run { stdin: child.stdin.take(), child, stderr: tail, gate, frames, _proxy: proxy })
+        let cgroup = if self.scoped { scope_cgroup(child.id()) } else { None };
+        Ok(Run { stdin: child.stdin.take(), child, cgroup, stderr: tail, gate, frames, _proxy: proxy })
     }
 
     fn write(run: &mut Run, msg: &HostMsg) {
@@ -439,6 +484,15 @@ impl Supervisor {
     }
 
     fn finish(&self, run: &mut Run, polite: bool) -> String {
+        let status = self.finish_process(run, polite);
+        // Whatever the plugin started goes too.
+        if let Some(cg) = &run.cgroup {
+            let _ = std::fs::write(cg.join("cgroup.kill"), "1");
+        }
+        status
+    }
+
+    fn finish_process(&self, run: &mut Run, polite: bool) -> String {
         if polite {
             Self::write(run, &HostMsg::Shutdown);
         }
