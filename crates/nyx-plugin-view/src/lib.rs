@@ -82,8 +82,8 @@ enum Handle {
     Vector(gtk::DrawingArea, Rc<RefCell<Vector>>),
     Frame(gtk::Picture),
     Row(gtk::Button, gtk::Image, gtk::Label, gtk::Label),
-    Toggle(gtk::Switch, gtk::Label, Rc<Cell<bool>>),
-    Slider(gtk::Scale, Rc<Cell<bool>>),
+    Toggle(gtk::Box, gtk::Switch, gtk::Label, Rc<Cell<bool>>),
+    Slider(gtk::Box, gtk::Scale, Rc<Cell<bool>>),
     Button(gtk::Button),
     Entry(gtk::Entry),
     Separator(gtk::Separator),
@@ -103,8 +103,7 @@ impl Handle {
             Handle::Graph(w, _) | Handle::Vector(w, _) => w.clone().upcast(),
             Handle::Spinner(w) => w.clone().upcast(),
             Handle::Row(w, ..) => w.clone().upcast(),
-            Handle::Toggle(w, ..) => w.parent().unwrap_or_else(|| w.clone().upcast()),
-            Handle::Slider(w, _) => w.parent().unwrap_or_else(|| w.clone().upcast()),
+            Handle::Toggle(b, ..) | Handle::Slider(b, ..) => b.clone().upcast(),
             Handle::Button(w) => w.clone().upcast(),
             Handle::Entry(w) => w.clone().upcast(),
             Handle::Separator(w) => w.clone().upcast(),
@@ -472,7 +471,7 @@ impl Builder<'_> {
                 });
                 h.append(&l);
                 h.append(&s);
-                Handle::Toggle(s, l, quiet)
+                Handle::Toggle(h, s, l, quiet)
             }
             NodeKind::Slider { min, max, step, value, icon } => {
                 let h = gtk::Box::new(gtk::Orientation::Horizontal, 8);
@@ -501,7 +500,7 @@ impl Builder<'_> {
                     });
                 });
                 h.append(&s);
-                Handle::Slider(s, quiet)
+                Handle::Slider(h, s, quiet)
             }
             NodeKind::Button { label, icon, action } => {
                 let b = gtk::Button::new();
@@ -727,18 +726,18 @@ fn apply(h: &Handle, set: &Map<String, Value>, ctx: &Ctx) {
                 s.set_visible(v.is_string());
                 s.set_text(v.as_str().unwrap_or(""));
             }
-            ("label", Handle::Toggle(_, l, _)) => {
+            ("label", Handle::Toggle(_, _, l, _)) => {
                 l.set_visible(v.is_string());
                 l.set_text(v.as_str().unwrap_or(""));
             }
             ("label", Handle::Button(b)) => b.set_label(v.as_str().unwrap_or("")),
-            ("active", Handle::Toggle(s, _, q)) => {
+            ("active", Handle::Toggle(_, s, _, q)) => {
                 q.set(true);
                 s.set_active(v.as_bool().unwrap_or(false));
                 s.set_state(v.as_bool().unwrap_or(false));
                 q.set(false);
             }
-            ("value", Handle::Slider(s, q)) => {
+            ("value", Handle::Slider(_, s, q)) => {
                 q.set(true);
                 s.set_value(f(v).unwrap_or(0.0));
                 q.set(false);

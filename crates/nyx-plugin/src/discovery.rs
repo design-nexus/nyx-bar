@@ -111,9 +111,19 @@ impl Found {
     }
 }
 
+/// Whether a data folder from `$XDG_DATA_DIRS` can hold trusted plugins: not one the
+/// user can write without a package manager (anything that really lives under
+/// `$HOME`; a Nix profile there resolves into the read-only store and is fine).
+fn packaged_dir(d: &Path) -> bool {
+    let Some(home) = std::env::var_os("HOME").map(PathBuf::from).filter(|h| h != Path::new("/")) else { return true };
+    let real = d.canonicalize().unwrap_or_else(|_| d.to_path_buf());
+    !real.starts_with(&home)
+}
+
 /// The folders to search, each with its trust, lowest priority first.
 pub fn search_dirs() -> Vec<(PathBuf, Trust)> {
-    let mut dirs: Vec<(PathBuf, Trust)> = paths::system_dirs().into_iter().rev().map(|d| (d, Trust::Packaged)).collect();
+    let mut dirs: Vec<(PathBuf, Trust)> =
+        paths::system_dirs().into_iter().rev().filter(|d| packaged_dir(d)).map(|d| (d, Trust::Packaged)).collect();
     dirs.push((paths::first_party_dir(), Trust::FirstParty));
     dirs.push((paths::user_dir(), Trust::ThirdParty));
     dirs
@@ -172,6 +182,13 @@ mod tests {
             format!("id = \"{id}\"\nname = \"{name}\"\napi_version = 1\nkinds = [\"bar\"]\nexec = [\"run\"]\n"),
         )
         .unwrap();
+    }
+
+    #[test]
+    fn data_dirs_under_home_are_not_trusted() {
+        let home = std::env::var("HOME").unwrap();
+        assert!(!packaged_dir(&PathBuf::from(&home).join(".local/share/nyx/plugins")));
+        assert!(packaged_dir(Path::new("/usr/share/nyx/plugins")));
     }
 
     #[test]

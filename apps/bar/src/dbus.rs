@@ -14,6 +14,8 @@ const XML: &str = r#"<node>
     <method name="ListPlugins"><arg type="s" name="json" direction="out"/></method>
     <method name="Reload"/>
     <method name="RestartPlugin"><arg type="s" name="id" direction="in"/><arg type="b" name="found" direction="out"/></method>
+    <method name="TestClick"><arg type="s" name="plugin" direction="in"/><arg type="s" name="item" direction="in"/><arg type="u" name="button" direction="in"/><arg type="b" name="found" direction="out"/></method>
+    <method name="TestClose"/>
   </interface>
 </node>"#;
 
@@ -44,6 +46,18 @@ pub fn serve(conn: &gio::DBusConnection, s: &Rc<Shared>) -> Result<Registration,
                     let id = params.get::<(String,)>().map(|(i,)| i).unwrap_or_default();
                     let found = bar::restart(&s, &id);
                     invocation.return_value(Some(&(found,).to_variant()));
+                }
+                "TestClick" | "TestClose" if std::env::var_os("NYX_BAR_DEBUG").is_none() => {
+                    invocation.return_dbus_error("org.freedesktop.DBus.Error.AccessDenied", "test methods need NYX_BAR_DEBUG")
+                }
+                "TestClick" => {
+                    let (plugin, item, button) = params.get::<(String, String, u32)>().unwrap_or_default();
+                    let found = bar::test_click(&s, &plugin, &item, button);
+                    invocation.return_value(Some(&(found,).to_variant()));
+                }
+                "TestClose" => {
+                    bar::test_close(&s);
+                    invocation.return_value(None);
                 }
                 _ => invocation.return_dbus_error("org.freedesktop.DBus.Error.UnknownMethod", method),
             }

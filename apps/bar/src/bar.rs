@@ -86,6 +86,12 @@ pub struct Shared {
     _dbus: RefCell<Option<dbus::Registration>>,
 }
 
+/// Test copies open popovers without grabbing input, so a screenshot run can never take
+/// the keyboard from whoever is at the computer.
+fn test_no_grab() -> bool {
+    std::env::var_os("NYX_BAR_TEST_NO_GRAB").is_some()
+}
+
 fn debug(f: impl FnOnce() -> String) {
     if std::env::var_os("NYX_BAR_DEBUG").is_some() {
         eprintln!("nyx-bar: {}", f());
@@ -185,6 +191,17 @@ pub fn start(app: &gtk::Application, only: Option<String>) {
         match dbus::serve(&conn, &s) {
             Ok(r) => *s._dbus.borrow_mut() = Some(r),
             Err(e) => eprintln!("nyx-bar: couldn't serve Bar1 on D-Bus: {e}"),
+        }
+        // A test copy is non-unique, so it doesn't own the app's name; give it its own.
+        if s.only.is_some() {
+            let id = gio::bus_own_name_on_connection(
+                &conn,
+                &format!("{}.Test", crate::APP_ID),
+                gio::BusNameOwnerFlags::NONE,
+                |_, _| {},
+                |_, name| eprintln!("nyx-bar: {name} is taken; this test copy has no Bar1"),
+            );
+            std::mem::forget(id);
         }
     }
     sync_plugins(&s);
@@ -529,6 +546,9 @@ fn on_report(s: &Rc<Shared>, id: &str, report: Report) {
                 if let Ok(mut e) = nyx_plugin::state::Editor::open() {
                     e.suspend(id, &reason, &nyx_plugin::state::now_utc());
                     let _ = e.save();
+                }
+                if std::env::var_os("NYX_BAR_NO_NOTIFY").is_some() {
+                    return;
                 }
                 let _ = std::process::Command::new("notify-send")
                     .args([
@@ -1017,6 +1037,9 @@ fn fill_popover(s: &Rc<Shared>, b: &Rc<Bar>, w: &Rc<ItemWidget>, plugin: &str, i
         p.set_has_arrow(false);
         p.set_position(gtk::PositionType::Bottom);
         p.set_parent(&w.root);
+        if test_no_grab() {
+            p.set_autohide(false);
+        }
         let (ws, wb, wr, pid, iid) = (Rc::downgrade(s), Rc::downgrade(b), w.root.downgrade(), plugin.to_string(), item.to_string());
         p.connect_closed(move |_| {
             let (Some(s), Some(b)) = (ws.upgrade(), wb.upgrade()) else { return };
@@ -1035,9 +1058,15 @@ fn fill_popover(s: &Rc<Shared>, b: &Rc<Bar>, w: &Rc<ItemWidget>, plugin: &str, i
 fn open_popover(s: &Rc<Shared>, b: &Rc<Bar>, w: &Rc<ItemWidget>, plugin: &str, item: &str) {
     fill_popover(s, b, w, plugin, item);
     let Some((pop, _)) = w.popover.borrow().clone() else { return };
-    b.window.set_keyboard_mode(KeyboardMode::OnDemand);
+    if !test_no_grab() {
+        b.window.set_keyboard_mode(KeyboardMode::OnDemand);
+    }
     w.root.add_css_class("open");
     pop.popup();
+    if std::env::var_os("NYX_BAR_DUMP").is_some() {
+        let p2 = pop.clone();
+        glib::timeout_add_local_once(Duration::from_millis(500), move || dump(p2.upcast_ref(), 0));
+    }
     send_event(s, plugin, item, &b.connector, EventKind::PopoverOpen, Some(1), None, None, None, Some(anchor(b, w.root.upcast_ref())));
 }
 
@@ -1060,13 +1089,18 @@ fn open_menu(s: &Rc<Shared>, b: &Rc<Bar>, w: &Rc<ItemWidget>, plugin: &str, item
     menu.set_has_arrow(false);
     menu.set_position(gtk::PositionType::Bottom);
     menu.set_parent(&w.root);
+    if test_no_grab() {
+        menu.set_autohide(false);
+    }
     let wb = Rc::downgrade(b);
     menu.connect_closed(move |_| {
         if let Some(b) = wb.upgrade() {
             b.window.set_keyboard_mode(KeyboardMode::None);
         }
     });
-    b.window.set_keyboard_mode(KeyboardMode::OnDemand);
+    if !test_no_grab() {
+        b.window.set_keyboard_mode(KeyboardMode::OnDemand);
+    }
     menu.popup();
     *w.menu.borrow_mut() = Some(menu);
 }
@@ -1118,4 +1152,45 @@ pub fn restart(s: &Rc<Shared>, id: &str) -> bool {
         sync_plugins(s);
     }
     exists
+}
+
+/// For tests (`Bar1.TestClick`, only with `NYX_BAR_DEBUG`): act as if `item` of
+/// `plugin` was clicked with `button` on the first bar.
+pub fn test_click(s: &Rc<Shared>, plugin: &str, item: &str, button: u32) -> bool {
+    let Some(b) = s.bars.borrow().first().cloned() else { return false };
+    let Some(w) = b.widgets.borrow().get(&(plugin.to_string(), item.to_string())).cloned() else { return false };
+    on_click(s, &b, &w, plugin, item, button);
+    true
+}
+
+/// For tests: close every popover and menu.
+pub fn test_close(s: &Rc<Shared>) {
+    for b in s.bars.borrow().iter() {
+        for w in b.widgets.borrow().values() {
+            if let Some((p, _)) = w.popover.borrow().as_ref() {
+                p.popdown();
+            }
+            if let Some(m) = w.menu.borrow().as_ref() {
+                m.popdown();
+            }
+        }
+    }
+}
+
+fn dump(w: &gtk::Widget, depth: usize) {
+    eprintln!(
+        "{}{} {:?} {}x{} visible={} classes={:?}",
+        "  ".repeat(depth),
+        w.type_().name(),
+        w.downcast_ref::<gtk::Label>().map(|l| l.text().to_string()).unwrap_or_default(),
+        w.width(),
+        w.height(),
+        w.is_visible(),
+        w.css_classes().iter().map(|c| c.to_string()).collect::<Vec<_>>()
+    );
+    let mut c = w.first_child();
+    while let Some(ch) = c {
+        dump(&ch, depth + 1);
+        c = ch.next_sibling();
+    }
 }
