@@ -40,6 +40,10 @@ Kinds: bar, control-center, desktop. Plugins live in ~/.local/share/nyx/plugins;
 choices in ~/.config/nyx/plugins.toml; the bar's layout in ~/.config/nyx/bar.toml.";
 
 fn main() {
+    // `nyx plugin list | head` should stop quietly.
+    unsafe {
+        libc::signal(libc::SIGPIPE, libc::SIG_DFL);
+    }
     let args: Vec<String> = std::env::args().skip(1).collect();
     if let Err(e) = run(&args) {
         eprintln!("nyx plugin: {e:#}");
@@ -745,6 +749,9 @@ fn enable(a: &Args) -> Result<()> {
         Some(k) => vec![k],
         None => p.manifest.known_kinds(),
     };
+    // Without a part, turning a plugin on keeps the parts already chosen; defaults only
+    // fill in when nothing of it is on (or for the one kind asked for).
+    let all_off = p.manifest.known_kinds().iter().all(|k| state.enabled_parts(&p.manifest, *k).is_empty());
     let mut choice = vec![];
     for k in kinds {
         let mut parts = state.enabled_parts(&p.manifest, k);
@@ -760,7 +767,7 @@ fn enable(a: &Args) -> Result<()> {
                     parts.push(x.to_string());
                 }
             }
-            None if parts.is_empty() => parts = p.manifest.default_parts(k),
+            None if parts.is_empty() && (all_off || kind_flag(a)?.is_some()) => parts = p.manifest.default_parts(k),
             None => {}
         }
         choice.push((k, parts));
