@@ -8,5 +8,5 @@ authors.workspace = true
 repository.workspace = true
 
 [dependencies]
-nyx-plugin-sdk = { path = "../../crates/nyx-plugin-sdk", features = ["network", "bluetooth", "audio", "power"] }
+nyx-plugin-sdk = { workspace = true, features = ["network", "bluetooth", "audio", "power"] }
 serde_json.workspace = true

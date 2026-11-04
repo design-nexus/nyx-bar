@@ -22,7 +22,9 @@ flowchart LR
 
 ## Shared crates
 
-All of these live in `crates/` for now:
+These lived in this repo's `crates/` until 2026-11-03; now `nyx-plugin-view` is in
+[nyx-design](https://github.com/design-nexus/nyx-design) and the rest in
+[nyx-core](https://github.com/design-nexus/nyx-core):
 
 - `nyx-plugin` (no GTK): manifests, discovery, `plugins.toml` (enabled parts and permission grants), installing, the index, and editing host layout files with `toml_edit`. The `nyx-plugin` command is built on it.
 - `nyx-plugin-protocol`: serde message types. The views, patches, menus, popovers and drawing nodes are shared by every kind; bar-specific messages live in a `bar` module.

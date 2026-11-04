@@ -355,7 +355,14 @@ yours with a pull request there. Plugins outside the index install from their UR
 
 ## SDKs
 
-- Rust: `nyx-plugin-sdk` (this repo, as a git dependency). `Plugin::start()` gives the
+- Rust: `nyx-plugin-sdk`, in [nyx-core](https://github.com/design-nexus/nyx-core), as a git
+  dependency:
+
+  ```toml
+  nyx-plugin-sdk = { git = "https://github.com/design-nexus/nyx-core.git", rev = "…" }
+  ```
+
+  `Plugin::start()` gives the
   hello and one stream of inputs (events, settings, visibility, your own data); `view`
   has builders for every node; the `network`, `bluetooth`, `audio`, `power` and `mpris`
   features push live system data; `frames` and `popup` cover the rest. The first-party

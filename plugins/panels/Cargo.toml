@@ -8,6 +8,6 @@ authors.workspace = true
 repository.workspace = true
 
 [dependencies]
-nyx-plugin-sdk = { path = "../../crates/nyx-plugin-sdk", features = ["dbus"] }
+nyx-plugin-sdk = { workspace = true, features = ["dbus"] }
 serde_json.workspace = true
 zbus.workspace = true

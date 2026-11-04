@@ -8,5 +8,5 @@ authors.workspace = true
 repository.workspace = true
 
 [dependencies]
-nyx-plugin-sdk = { path = "../../crates/nyx-plugin-sdk", features = ["mpris"] }
+nyx-plugin-sdk = { workspace = true, features = ["mpris"] }
 serde_json.workspace = true

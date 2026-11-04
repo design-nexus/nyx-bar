@@ -5,6 +5,11 @@ For the session working on `nyx-packages` and `nyxos`. Nyx Bar is pushed at
 
 ## nyx-packages
 
+The plugin crates moved out of this repo on 2026-11-03: `nyx-plugin`,
+`nyx-plugin-protocol`, `nyx-plugin-host` and `nyx-plugin-sdk` are in nyx-core
+(e478d83), `nyx-plugin-view` in nyx-design (aec4b03). They're git dependencies here,
+so the recipe's cargo lock needs their output hashes like the other git crates.
+
 1. `flake.nix` inputs: `nyx-bar = { url = "github:design-nexus/nyx-bar"; flake = false; };`
 2. Copy [nyx-bar.nix](nyx-bar.nix) to `pkgs/nyx-bar.nix` and add `"nyx-bar"` to the
    `fromSource` list in `pkgs/default.nix`.
