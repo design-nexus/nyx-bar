@@ -210,6 +210,8 @@ struct Gate {
     count: u32,
     last: Option<String>,
     skipped: u64,
+    /// Skipped in the current second.
+    window_skipped: u32,
 }
 
 impl Gate {
@@ -219,6 +221,7 @@ impl Gate {
         if self.window.is_none_or(|w| now.duration_since(w) >= Duration::from_secs(1)) {
             self.window = Some(now);
             self.count = 0;
+            self.window_skipped = 0;
         }
         if self.count < budget {
             self.count += 1;
@@ -226,8 +229,17 @@ impl Gate {
         } else {
             self.last = Some(line);
             self.skipped += 1;
+            self.window_skipped += 1;
             None
         }
+    }
+
+    /// How long to stop reading: once a whole budget has been skipped this second, the
+    /// rest of the second. The plugin's pipe fills and its writes wait, so a flood costs
+    /// neither the host nor, much, the plugin.
+    fn pause(&self, budget: u32) -> Option<Duration> {
+        let w = self.window?;
+        (self.window_skipped >= budget).then(|| Duration::from_secs(1).saturating_sub(w.elapsed()))
     }
 
     /// The newest skipped line, once its second is over (or a new second has room).
@@ -442,7 +454,14 @@ impl Supervisor {
             loop {
                 match pacer::read_line_limited(&mut r, max) {
                     Ok(pacer::Line::Text(l)) => {
-                        let Some(l) = g.lock().unwrap().admit(l, budget) else { continue };
+                        let admitted = g.lock().unwrap().admit(l, budget);
+                        let Some(l) = admitted else {
+                            let pause = g.lock().unwrap().pause(budget);
+                            if let Some(d) = pause {
+                                std::thread::sleep(d);
+                            }
+                            continue;
+                        };
                         if tx.send(Ev::Line(run_gen, l)).is_err() {
                             return;
                         }
@@ -879,6 +898,24 @@ done
         assert!(g.admit("101".into(), 10).is_some());
         assert_eq!(g.overflow(10), Some(("100".to_string(), 91)));
         assert!(g.overflow(10).is_none());
+    }
+
+    #[test]
+    fn a_flood_pauses_reading() {
+        let mut g = Gate::default();
+        for i in 0..15 {
+            g.admit(i.to_string(), 10);
+        }
+        assert!(g.pause(10).is_none(), "a few skipped lines don't pause");
+        for i in 15..25 {
+            g.admit(i.to_string(), 10);
+        }
+        let d = g.pause(10).expect("a whole budget skipped pauses");
+        assert!(d <= Duration::from_secs(1));
+        // The next second reads again.
+        g.window = Some(Instant::now() - Duration::from_secs(2));
+        assert!(g.admit("x".into(), 10).is_some());
+        assert!(g.pause(10).is_none());
     }
 
     #[test]

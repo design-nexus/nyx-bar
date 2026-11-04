@@ -306,7 +306,10 @@ Plugins that come with a package or Nyx itself are trusted. Plugins in
   capabilities, a clean environment. Without bubblewrap they don't run at all.
 - They get only what `[permissions]` asks for, and only once the user approved it
   (`nyx plugin add` asks). An update that asks for more stays off until it's approved
-  again.
+  again. A plugin that can change the computer through the system bus (network
+  settings, power, disks, or a service Nyx doesn't know) gets a separate warning naming
+  each change, a prompt that defaults to no, and with `--yes` also needs
+  `--allow-system`.
 
 | Permission | Gives |
 | --- | --- |
@@ -334,10 +337,10 @@ change per plugin in `bar.toml` (`[plugins."<id>".limits]`):
 | CPU | 10% of one core |
 | Processes and threads | 32 |
 | Priority | nice 10, IO weight 50 |
-| Messages | 30 a second; extras are merged, newest wins |
+| Messages | 30 a second; extras are merged, newest wins; a plugin far over it waits to write |
 | Message size | 256 KB, or 2 MB with an image |
 | Drawings | 5,000 commands or SVG elements |
-| Frames | 30 fps, 400 × 64 logical pixels |
+| Frames | 30 fps (in every host), 400 × 64 logical pixels in the bar |
 | Popovers | 480 × 640 |
 | Items | 16 per monitor |
 | Interval runs | every 5 s at most, 10 s each |

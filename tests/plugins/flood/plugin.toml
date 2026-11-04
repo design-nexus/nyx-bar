@@ -3,10 +3,13 @@ id = "test.flood"
 name = "Flood"
 version = "1"
 api_version = 1
-kinds = ["bar"]
+kinds = ["bar", "control-center"]
 exec = ["python3", "run.py"]
 needs = ["python3"]
 
 [bar]
 mode = "stream"
 section = "left"
+
+[control-center]
+mode = "stream"

@@ -66,13 +66,27 @@ pub fn describe(p: &Permissions) -> Vec<String> {
     out
 }
 
+/// System services that only report (reading them changes nothing).
+const READ_ONLY: &[&str] = &["org.freedesktop.UPower"];
+
+/// What a plugin could change on the computer through the system bus, one line each:
+/// the known services' powers, and services Nyx doesn't know (assumed able to change
+/// anything they offer).
+pub fn system_changes(p: &Permissions) -> Vec<String> {
+    let mut out = vec![];
+    for name in &p.system_talk {
+        match SYSTEM_SERVICES.iter().find(|(s, _)| name == s || name.starts_with(&format!("{s}."))) {
+            Some((s, _)) if READ_ONLY.contains(s) => {}
+            Some((_, what)) => out.push(format!("{what} ({name})")),
+            None => out.push(format!("whatever {name} offers: Nyx doesn't know this system service")),
+        }
+    }
+    out
+}
+
 /// Whether any permission can change the system, for a stronger warning.
 pub fn changes_system(p: &Permissions) -> bool {
-    p.system_talk.iter().any(|n| {
-        SYSTEM_SERVICES
-            .iter()
-            .any(|(s, _)| (n == s || n.starts_with(&format!("{s}."))) && *s != "org.freedesktop.UPower")
-    })
+    !system_changes(p).is_empty()
 }
 
 #[cfg(test)]
@@ -102,5 +116,11 @@ mod tests {
         assert!(lines[2].ends_with("nyx-weather --toggle"));
         assert!(changes_system(&p));
         assert!(describe(&Permissions::default())[0].starts_with("No special"));
+        let read_only = Permissions { system_talk: vec!["org.freedesktop.UPower".into()], ..Default::default() };
+        assert!(!changes_system(&read_only), "reading the battery changes nothing");
+        let unknown = Permissions { system_talk: vec!["com.example.Mystery".into()], ..Default::default() };
+        assert!(system_changes(&unknown)[0].contains("doesn't know"));
+        let login = Permissions { system_talk: vec!["org.freedesktop.login1".into()], ..Default::default() };
+        assert!(system_changes(&login)[0].starts_with("suspend, restart or shut down"));
     }
 }

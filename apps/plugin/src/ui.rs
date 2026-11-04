@@ -36,6 +36,22 @@ pub fn confirm(prompt: &str, yes: bool) -> Result<bool> {
     Ok(matches!(a.to_lowercase().as_str(), "y" | "yes"))
 }
 
+/// Like `confirm`, for something risky: the answer starts at no, and `--yes` alone
+/// isn't enough (`allow` is the extra flag that says so).
+pub fn confirm_risky(prompt: &str, yes: bool, allow: bool, flag: &str) -> Result<bool> {
+    if yes && allow {
+        return Ok(true);
+    }
+    if !interactive() {
+        bail!("{prompt} — refusing without a terminal; pass --yes {flag}");
+    }
+    if gum() {
+        return Ok(Command::new("gum").args(["confirm", "--default=false", prompt]).status().is_ok_and(|s| s.success()));
+    }
+    let a = ask(&format!("{prompt} [y/N] "));
+    Ok(matches!(a.to_lowercase().as_str(), "y" | "yes"))
+}
+
 /// Pick any number of options; `selected` start ticked. Returns their indexes.
 pub fn choose_many(header: &str, options: &[String], selected: &[bool]) -> Result<Vec<usize>> {
     if !interactive() {
@@ -123,4 +139,9 @@ pub fn page(text: &str) {
         }
     }
     println!("{text}");
+}
+
+/// A warning that matters more: in red.
+pub fn danger(text: &str) {
+    eprintln!("\x1b[1;31m{text}\x1b[0m\n");
 }

@@ -25,6 +25,7 @@ nyx plugin add URL|NAME [options]       install from git or the index
     --bar[=ITEM,…]     --control-center[=ITEM,…]      --desktop[=ITEM,…]
     --section S        where bar items go (left, center, right)
     --yes              don't ask (approves its permissions)
+    --allow-system     with --yes, also approve a plugin that can change the computer
 nyx plugin configure [ID]               choose its parts and where they go
 nyx plugin update [ID] [--yes]          update git plugins (all, or one)
 nyx plugin remove ID [--yes]            uninstall (built-in plugins can only be turned off)
@@ -487,6 +488,11 @@ fn save_choice(m: &Manifest, choice: &[(Kind, Vec<String>)]) -> Result<()> {
     e.save()
 }
 
+/// `--allow-system`: with `--yes`, also approve plugins that can change the computer.
+fn allow_system() -> bool {
+    std::env::args().any(|a| a == "--allow-system")
+}
+
 /// Ask to approve a third-party plugin's permissions; save the grant.
 fn approve(m: &Manifest, reviewed: Option<bool>, yes: bool) -> Result<bool> {
     let strong = permissions::changes_system(&m.permissions);
@@ -498,11 +504,18 @@ fn approve(m: &Manifest, reviewed: Option<bool>, yes: bool) -> Result<bool> {
     if reviewed == Some(false) || reviewed.is_none() {
         text.push_str("\nIt hasn't been reviewed for the Nyx plugin index. Only add plugins you trust.");
     }
-    if strong {
-        text.push_str("\nIt can change system settings.");
-    }
     ui::warn(&text);
-    if !ui::confirm(&format!("Allow {}?", m.name), yes)? {
+    if strong {
+        let lines: Vec<String> = permissions::system_changes(&m.permissions).iter().map(|l| format!("  • {l}")).collect();
+        ui::danger(&format!(
+            "{} can change this computer, outside its sandbox and for everyone who uses it:\n{}",
+            m.name,
+            lines.join("\n")
+        ));
+        if !ui::confirm_risky(&format!("Allow {} to change this computer?", m.name), yes, allow_system(), "--allow-system")? {
+            return Ok(false);
+        }
+    } else if !ui::confirm(&format!("Allow {}?", m.name), yes)? {
         return Ok(false);
     }
     let mut e = Editor::open()?;
