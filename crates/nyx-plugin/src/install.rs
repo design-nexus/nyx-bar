@@ -18,6 +18,11 @@ use std::process::Command;
 /// (`-oProxyCommand=…`), transport helpers (`ext::sh -c …`) and local paths.
 pub fn check_url(url: &str) -> Result<()> {
     let url = url.trim();
+    // Debug builds only, for the CLI tests: a local repo by file:// URL.
+    #[cfg(debug_assertions)]
+    if std::env::var_os("NYX_PLUGIN_TEST_ALLOW_FILE").is_some() && url.starts_with("file:///") && !url.contains("::") {
+        return Ok(());
+    }
     if url.is_empty() {
         bail!("no URL");
     }
@@ -52,7 +57,8 @@ fn git(dir: Option<&Path>, args: &[&str]) -> Result<String> {
     if let Some(d) = dir {
         cmd.arg("-C").arg(d);
     }
-    cmd.args(["-c", "protocol.file.allow=never", "-c", "protocol.ext.allow=never", "-c", "advice.detachedHead=false"])
+    let file = if cfg!(debug_assertions) && std::env::var_os("NYX_PLUGIN_TEST_ALLOW_FILE").is_some() { "always" } else { "never" };
+    cmd.args(["-c", &format!("protocol.file.allow={file}"), "-c", "protocol.ext.allow=never", "-c", "advice.detachedHead=false"])
         .args(args)
         .env("GIT_TERMINAL_PROMPT", "0")
         .env("GIT_SSH_COMMAND", std::env::var("GIT_SSH_COMMAND").unwrap_or_else(|_| "ssh -oBatchMode=yes".into()));

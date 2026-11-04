@@ -28,6 +28,9 @@ pub struct Config {
     pub sections: Sections,
     #[serde(default = "default_height")]
     pub height: i32,
+    /// `gpu` draws with GTK's GPU renderer instead of cairo (more memory).
+    #[serde(default)]
+    pub renderer: Option<String>,
     /// Hide the bar on a monitor showing a fullscreen window.
     #[serde(default = "yes")]
     pub hide_for_fullscreen: bool,

@@ -1,0 +1,16 @@
+# Test fixture: every drawing mode in one plugin (a layout with hover, a CSS animation,
+# a vector ring, and 30 fps shared-memory frames).
+id = "test.draw"
+name = "Drawing test"
+version = "1"
+api_version = 1
+kinds = ["bar"]
+exec = ["python3", "draw.py"]
+needs = ["python3"]
+
+[permissions]
+frames = true
+
+[bar]
+mode = "stream"
+section = "left"

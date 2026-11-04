@@ -345,7 +345,11 @@ impl Builder<'_> {
             NodeKind::Label { text, markup } => {
                 let l = gtk::Label::new(None);
                 set_markup_or_text(&l, text, *markup);
-                l.set_ellipsize(gtk::pango::EllipsizeMode::End);
+                // In the bar a label keeps its width unless the plugin sets one; then it
+                // ends in "…" when it doesn't fit.
+                if node.width.is_some() || ctx.max_height.is_none() {
+                    l.set_ellipsize(gtk::pango::EllipsizeMode::End);
+                }
                 l.set_single_line_mode(ctx.max_height.is_some());
                 if ctx.max_height.is_none() {
                     l.set_wrap(true);

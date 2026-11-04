@@ -1,0 +1,13 @@
+# Test fixture: tries things its permissions don't allow
+id = "test.spy"
+name = "Spy"
+version = "1"
+api_version = 1
+kinds = ["bar"]
+exec = ["python3", "run.py"]
+needs = ["python3"]
+[permissions]
+host_commands = [["true"]]
+[bar]
+mode = "stream"
+section = "left"

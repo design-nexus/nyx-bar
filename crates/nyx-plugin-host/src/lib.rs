@@ -167,11 +167,50 @@ enum Outcome {
     Crashed,
 }
 
+/// Lines a plugin sends beyond a budget aren't parsed at all (that alone costs the
+/// host CPU): they're counted, and only the newest is kept, for the end of the second.
+#[derive(Default)]
+struct Gate {
+    window: Option<Instant>,
+    count: u32,
+    last: Option<String>,
+    skipped: u64,
+}
+
+impl Gate {
+    /// Whether to parse this line now; otherwise it's kept as the newest.
+    fn admit(&mut self, line: String, budget: u32) -> Option<String> {
+        let now = Instant::now();
+        if self.window.is_none_or(|w| now.duration_since(w) >= Duration::from_secs(1)) {
+            self.window = Some(now);
+            self.count = 0;
+        }
+        if self.count < budget {
+            self.count += 1;
+            Some(line)
+        } else {
+            self.last = Some(line);
+            self.skipped += 1;
+            None
+        }
+    }
+
+    /// The newest skipped line, once its second is over (or a new second has room).
+    fn overflow(&mut self, budget: u32) -> Option<(String, u64)> {
+        if self.last.is_some() && (self.count < budget || self.window.is_some_and(|w| w.elapsed() >= Duration::from_secs(1))) {
+            let skipped = std::mem::take(&mut self.skipped);
+            return self.last.take().map(|l| (l, skipped));
+        }
+        None
+    }
+}
+
 /// Resources made for one run, dropped (and cleaned up) with it.
 struct Run {
     child: Child,
     stdin: Option<ChildStdin>,
     stderr: Arc<Mutex<VecDeque<String>>>,
+    gate: Arc<Mutex<Gate>>,
     frames: Option<frames::Server>,
     _proxy: Option<proxy::Proxy>,
 }
@@ -351,11 +390,15 @@ impl Supervisor {
         let stderr = child.stderr.take().expect("stderr");
         let tx = self.tx.clone();
         let max = self.spec.limits.image_bytes;
+        let gate: Arc<Mutex<Gate>> = Arc::default();
+        let g = gate.clone();
+        let budget = self.spec.limits.messages_per_sec.saturating_mul(8).max(16);
         std::thread::spawn(move || {
             let mut r = BufReader::new(stdout);
             loop {
                 match pacer::read_line_limited(&mut r, max) {
                     Ok(pacer::Line::Text(l)) => {
+                        let Some(l) = g.lock().unwrap().admit(l, budget) else { continue };
                         if tx.send(Ev::Line(run_gen, l)).is_err() {
                             return;
                         }
@@ -384,7 +427,7 @@ impl Supervisor {
                 }
             }
         });
-        Ok(Run { stdin: child.stdin.take(), child, stderr: tail, frames, _proxy: proxy })
+        Ok(Run { stdin: child.stdin.take(), child, stderr: tail, gate, frames, _proxy: proxy })
     }
 
     fn write(run: &mut Run, msg: &HostMsg) {
@@ -472,6 +515,7 @@ impl Supervisor {
         let mut cpu = metrics::CpuMeter::new();
         let mut over = 0u32;
         let mut last_check = Instant::now();
+        let mut flood_warned = false;
         loop {
             let wait = pacer.next_wake().unwrap_or(Duration::from_secs(1));
             match self.rx.recv_timeout(wait) {
@@ -495,6 +539,14 @@ impl Supervisor {
                     return Outcome::Restart;
                 }
                 _ => {}
+            }
+            let overflow = run.gate.lock().unwrap().overflow(self.spec.limits.messages_per_sec.saturating_mul(8).max(16));
+            if let Some((line, skipped)) = overflow {
+                if !flood_warned {
+                    flood_warned = true;
+                    self.report(Report::Warning(format!("it sends far more than {} messages a second; {skipped} skipped, the newest kept", self.spec.limits.messages_per_sec)));
+                }
+                self.handle_line(&run, &mut pacer, &line, None);
             }
             for m in pacer.tick(Instant::now()) {
                 self.report(Report::Message(m));
@@ -752,6 +804,20 @@ done
             }
         }
         assert_eq!(exits, 2);
+    }
+
+    #[test]
+    fn the_gate_keeps_the_newest_line() {
+        let mut g = Gate::default();
+        let admitted = (0..100).filter(|i| g.admit(i.to_string(), 10).is_some()).count();
+        assert_eq!(admitted, 10);
+        assert!(g.overflow(10).is_none());
+        // A new second: the newest skipped line goes first.
+        assert!(g.admit("100".into(), 10).is_none());
+        g.window = Some(Instant::now() - Duration::from_secs(2));
+        assert!(g.admit("101".into(), 10).is_some());
+        assert_eq!(g.overflow(10), Some(("100".to_string(), 91)));
+        assert!(g.overflow(10).is_none());
     }
 
     #[test]

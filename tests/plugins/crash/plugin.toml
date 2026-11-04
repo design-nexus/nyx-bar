@@ -1,0 +1,12 @@
+# Test fixture: exits at once, so it's suspended after five tries
+id = "test.crash"
+name = "Crasher"
+version = "1"
+api_version = 1
+kinds = ["bar"]
+exec = ["python3", "run.py"]
+needs = ["python3"]
+
+[bar]
+mode = "stream"
+section = "left"

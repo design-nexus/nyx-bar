@@ -867,6 +867,7 @@ dependencies = [
  "nyx-plugin-view",
  "nyx-theme",
  "serde_json",
+ "toml",
 ]
 
 [[package]]

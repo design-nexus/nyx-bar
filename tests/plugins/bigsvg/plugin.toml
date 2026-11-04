@@ -1,0 +1,12 @@
+# Test fixture: sends a drawing with 6,000 elements, over the 5,000 limit
+id = "test.bigsvg"
+name = "Big SVG"
+version = "1"
+api_version = 1
+kinds = ["bar"]
+exec = ["python3", "run.py"]
+needs = ["python3"]
+
+[bar]
+mode = "stream"
+section = "left"

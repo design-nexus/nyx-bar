@@ -12,6 +12,14 @@ use gtk::prelude::*;
 
 pub const APP_ID: &str = "io.github.design_nexus.nyx.Bar";
 
+fn wants_gpu() -> bool {
+    std::fs::read_to_string(nyx_bar_core::Config::path())
+        .ok()
+        .and_then(|t| t.parse::<toml::Table>().ok())
+        .and_then(|t| t.get("renderer").and_then(|r| r.as_str()).map(|r| r == "gpu"))
+        .unwrap_or(false)
+}
+
 fn main() -> std::process::ExitCode {
     let mut only = std::env::var("NYX_BAR_ONLY").ok().filter(|s| !s.is_empty());
     let mut args = std::env::args().skip(1);
@@ -37,6 +45,12 @@ fn main() -> std::process::ExitCode {
                 return std::process::ExitCode::from(2);
             }
         }
+    }
+    // A bar redraws little: GTK's cairo renderer draws it as well for about 70 MB less
+    // than the GPU renderers, whatever the session asks for. `renderer = "gpu"` in
+    // bar.toml leaves the choice to GTK and GSK_RENDERER.
+    if !wants_gpu() {
+        unsafe { std::env::set_var("GSK_RENDERER", "cairo") };
     }
     let (id, flags) = match &only {
         Some(_) => (format!("{APP_ID}.Test"), gtk::gio::ApplicationFlags::NON_UNIQUE),

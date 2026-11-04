@@ -898,8 +898,9 @@ fn refresh_widget(s: &Rc<Shared>, b: &Rc<Bar>, plugin: &str, item: &str) {
     let node = current.view.clone().unwrap_or_else(|| view::simple(&current));
     let rendered = Rc::new(view::render(&node, &ctx));
     rendered.attach_states(w.root.upcast_ref(), &ctx);
-    while let Some(c) = w.root.first_child() {
-        w.root.remove(&c);
+    // Only the old view goes: the item's popover and menu are children of the root too.
+    if let Some(old) = w.rendered.borrow().as_ref() {
+        w.root.remove(&old.root);
     }
     w.root.append(&rendered.root);
     for c in w.root.css_classes() {

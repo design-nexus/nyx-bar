@@ -28,6 +28,9 @@ right = [
 # Bar height in logical pixels.
 # height = 32
 
+# The bar draws with GTK's cairo renderer, which uses far less memory. For the GPU one:
+# renderer = "gpu"
+
 # Settings for one plugin:
 # [plugins."nyx.clock"]
 # format = "%a %b %-d  %H:%M"

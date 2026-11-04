@@ -1,0 +1,12 @@
+# Test fixture: sends thousands of patches a second; the bar coalesces them
+id = "test.flood"
+name = "Flood"
+version = "1"
+api_version = 1
+kinds = ["bar"]
+exec = ["python3", "run.py"]
+needs = ["python3"]
+
+[bar]
+mode = "stream"
+section = "left"

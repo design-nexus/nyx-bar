@@ -1,0 +1,12 @@
+# Test fixture: allocates past its 128 MB limit, again and again
+id = "test.hog"
+name = "Memory hog"
+version = "1"
+api_version = 1
+kinds = ["bar"]
+exec = ["python3", "run.py"]
+needs = ["python3"]
+
+[bar]
+mode = "stream"
+section = "left"

@@ -1,0 +1,9 @@
+.dot {
+  color: @theme_danger;
+  animation: pulse 0.8s ease-in-out infinite alternate;
+}
+
+@keyframes pulse {
+  from { opacity: 1; }
+  to { opacity: 0.2; }
+}
