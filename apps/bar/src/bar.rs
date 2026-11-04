@@ -195,14 +195,13 @@ pub fn start(app: &gtk::Application, only: Option<String>) {
         }
         // A test copy is non-unique, so it doesn't own the app's name; give it its own.
         if s.only.is_some() {
-            let id = gio::bus_own_name_on_connection(
+            gio::bus_own_name_on_connection(
                 &conn,
                 &format!("{}.Test", crate::APP_ID),
                 gio::BusNameOwnerFlags::NONE,
                 |_, _| {},
                 |_, name| eprintln!("nyx-bar: {name} is taken; this test copy has no Bar1"),
             );
-            std::mem::forget(id);
         }
     }
     sync_plugins(&s);
