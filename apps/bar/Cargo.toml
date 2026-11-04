@@ -16,7 +16,7 @@ async-channel.workspace = true
 gtk.workspace = true
 gtk4-layer-shell.workspace = true
 nyx-bar-core = { path = "../../crates/nyx-bar-core" }
-nyx-desktop = { git = "https://github.com/design-nexus/nyx-core.git", rev = "e478d834d7d3c482cba6af4a3fd1c60f7390ae89" }
+nyx-desktop = { git = "https://github.com/design-nexus/nyx-core.git", rev = "0b511a6e338f4c2c818bad6ebd351ae406578c00" }
 nyx-plugin.workspace = true
 nyx-plugin-host.workspace = true
 nyx-plugin-protocol.workspace = true
