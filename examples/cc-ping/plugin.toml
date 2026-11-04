@@ -1,0 +1,33 @@
+# A third-party Control Center tile in Python: latency to a host, with recent pings in
+# its detail view. The standard-library module sdk/python/nyx_plugin.py is copied
+# beside it.
+id = "example.cc-ping"
+name = "Ping"
+version = "0.1.0"
+author = "You"
+license = "MIT"
+description = "Latency to a host, every five seconds while the Control Center is open."
+api_version = 1
+kinds = ["control-center"]
+exec = ["python3", "ping.py"]
+needs = ["python3"]
+
+[permissions]
+network = true
+
+[control-center]
+mode = "stream"
+
+[[control-center.items]]
+id = "ping"
+name = "Ping"
+description = "Click to pause; the arrow lists recent pings."
+sizes = ["2x1", "1x1"]
+icon = "network-transmit-receive-symbolic"
+swatch = "teal"
+detail = true
+default = true
+
+[settings]
+host = "1.1.1.1"
+port = 443

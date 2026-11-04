@@ -170,29 +170,47 @@ pub fn cc_append(doc: &mut DocumentMut, widget: &str, size: &str) {
         pages.push(Table::new());
     }
     let last = pages.iter_mut().last().expect("a page");
-    let tiles = array_of(last, "tiles");
-    if tiles.iter().any(|t| t.as_inline_table().and_then(|t| t.get("widget")).and_then(|w| w.as_str()) == Some(widget)) {
-        return;
+    // The Control Center writes `[[pages.tiles]]` tables; people may write inline arrays.
+    match last.get_mut("tiles") {
+        Some(Item::ArrayOfTables(tiles)) => {
+            if tiles.iter().any(|t| t.get("widget").and_then(|w| w.as_str()) == Some(widget)) {
+                return;
+            }
+            let mut t = Table::new();
+            t.insert("widget", value(widget));
+            t.insert("size", value(size));
+            tiles.push(t);
+        }
+        _ => {
+            let tiles = array_of(last, "tiles");
+            if tiles.iter().any(|t| t.as_inline_table().and_then(|t| t.get("widget")).and_then(|w| w.as_str()) == Some(widget)) {
+                return;
+            }
+            let mut t = InlineTable::new();
+            t.insert("widget", Value::from(widget));
+            t.insert("size", Value::from(size));
+            tiles.push(Value::InlineTable(t));
+        }
     }
-    let mut t = InlineTable::new();
-    t.insert("widget", Value::from(widget));
-    t.insert("size", Value::from(size));
-    tiles.push(Value::InlineTable(t));
 }
 
 /// Remove a plugin's tiles (all of a plugin's, or one part's).
 pub fn cc_remove(doc: &mut DocumentMut, plugin: &str, part: Option<&str>) {
     let Some(pages) = doc.get_mut("pages").and_then(|p| p.as_array_of_tables_mut()) else { return };
     let prefix = format!("plugin:{plugin}/");
+    let keep = |w: &str| match part {
+        Some(p) => w != tile_id(plugin, p),
+        None => !w.starts_with(&prefix),
+    };
     for page in pages.iter_mut() {
-        if let Some(tiles) = page.get_mut("tiles").and_then(|t| t.as_array_mut()) {
-            tiles.retain(|t| {
-                let w = t.as_inline_table().and_then(|t| t.get("widget")).and_then(|w| w.as_str()).unwrap_or("");
-                match part {
-                    Some(p) => w != tile_id(plugin, p),
-                    None => !w.starts_with(&prefix),
+        match page.get_mut("tiles") {
+            Some(Item::ArrayOfTables(tiles)) => tiles.retain(|t| keep(t.get("widget").and_then(|w| w.as_str()).unwrap_or(""))),
+            Some(item) => {
+                if let Some(tiles) = item.as_array_mut() {
+                    tiles.retain(|t| keep(t.as_inline_table().and_then(|t| t.get("widget")).and_then(|w| w.as_str()).unwrap_or("")));
                 }
-            });
+            }
+            None => {}
         }
     }
 }
@@ -308,6 +326,22 @@ mod tests {
         cc_remove(&mut doc, "nyx.weather", None);
         assert!(!doc.to_string().contains("plugin:"));
         assert!(doc.to_string().contains("wifi"));
+    }
+
+    #[test]
+    fn control_center_tiles_as_tables() {
+        // As the Control Center saves it: every tile its own table.
+        let text = "version = 3\n\n[[pages]]\n\n[[pages.tiles]]\nwidget = \"wifi\"\nsize = \"2x1\"\n\n[[pages]]\n\n[[pages.tiles]]\nwidget = \"battery\"\nsize = \"1x1\"\n";
+        let mut doc: DocumentMut = text.parse().unwrap();
+        cc_append(&mut doc, &tile_id("nyx.weather", "tile"), "2x1");
+        cc_append(&mut doc, &tile_id("nyx.weather", "tile"), "2x1");
+        let out = doc.to_string();
+        assert!(out.contains("battery"), "the last page keeps its tiles: {out}");
+        assert_eq!(out.matches("plugin:nyx.weather/tile").count(), 1);
+        assert_eq!(out.matches("[[pages]]").count(), 2, "no new page: {out}");
+        cc_remove(&mut doc, "nyx.weather", None);
+        let out = doc.to_string();
+        assert!(!out.contains("plugin:") && out.contains("battery") && out.contains("wifi"), "{out}");
     }
 
     #[test]

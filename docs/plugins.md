@@ -1,7 +1,7 @@
 # Writing Nyx plugins
 
 A Nyx plugin is a folder with a `plugin.toml` and a program in any language. The host
-(Nyx Bar, Nyx Desktop Widgets; the Control Center later) starts the program and
+(Nyx Bar, Nyx Desktop Widgets, the Control Center) starts the program and
 talks to it in JSON lines: one object per line, the host's on the program's stdin,
 the program's on its stdout. Diagnostics go to stderr, which ends up in the journal.
 
@@ -146,6 +146,39 @@ Views are kept to the widget's size, inside the card's 16 px padding. While wind
 cover every copy of a widget, the plugin gets `visible: false` for that item (and for
 the plugin when nothing of it can be seen); pause then. An interval plugin is run
 again at once when its widgets change.
+
+## Control Center tiles
+
+A `control-center` part is a tile on the Control Center's dashboard, beside Wi-Fi and
+the rest:
+
+```toml
+[control-center]
+mode = "stream"
+
+[[control-center.items]]
+id = "ping"
+name = "Ping"
+sizes = ["2x1", "1x1"]                   # grid cells, up to 4x3; the first is the default
+icon = "network-transmit-receive-symbolic"
+swatch = "teal"                          # the tile's colour when on (blue, violet, pink,
+                                         # red, coral, amber, green, teal)
+detail = true                            # it has a detail view
+default = true
+```
+
+- An item **without a view** is drawn as a native toggle: `icon` in the chip, the
+  part's name, `text` as the status line, and the chip lit when `class` has `on`. A
+  click runs `on_click`, else sends a `toggle` event. With `detail = true` and a
+  popover, it's a split tile whose arrow opens the detail view.
+- An item **with a view** fills the tile (keep to the sizes in `widgets`).
+- The item's **popover is its detail view**, shown in the panel under a back button;
+  `popover_open` and `popover_close` say when it's showing.
+- The plugin starts the first time its tile shows, hears `visible` as the panel opens
+  and closes, and is stopped after two minutes hidden (trusted plugins with
+  `keep_alive = true` aren't). Its last items show at once on the next open.
+
+`examples/cc-ping` is a complete third-party tile in Python.
 
 ## Views
 

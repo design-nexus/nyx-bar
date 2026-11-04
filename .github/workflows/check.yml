@@ -27,4 +27,4 @@ jobs:
       - name: Script plugins
         run: |
           for f in plugins/*/*.sh examples/*/*.sh; do bash -n "$f"; done
-          python3 -m py_compile sdk/python/nyx_plugin.py examples/hello-py/hello.py
+          python3 -m py_compile sdk/python/nyx_plugin.py examples/hello-py/hello.py examples/cc-ping/ping.py

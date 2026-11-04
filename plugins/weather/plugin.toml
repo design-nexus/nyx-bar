@@ -5,7 +5,7 @@ author = "Design Nexus"
 license = "MIT"
 description = "Current conditions from Nyx Weather."
 api_version = 1
-kinds = ["bar", "desktop"]
+kinds = ["bar", "desktop", "control-center"]
 exec = ["sh", "weather.sh"]
 needs = ["nyx-weather"]
 
@@ -36,4 +36,18 @@ name = "Weather card"
 description = "Current conditions. Click opens Nyx Weather."
 sizes = ["medium", "compact", "large"]
 interactive = true
+default = true
+
+[control-center]
+exec = ["sh", "weather-cc.sh"]
+mode = "interval"
+interval = 600
+
+[[control-center.items]]
+id = "tile"
+name = "Weather"
+description = "Current conditions. Click opens Nyx Weather."
+sizes = ["2x1", "1x1"]
+icon = "weather-few-clouds-symbolic"
+swatch = "amber"
 default = true
