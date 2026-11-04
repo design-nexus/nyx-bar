@@ -157,6 +157,27 @@ fn style_class(decls: &str) -> String {
     class
 }
 
+thread_local! {
+    static TEXT_SCALE: std::cell::Cell<Option<f64>> = const { std::cell::Cell::new(None) };
+    static WATCHING: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// The suite's text scale (Nyx Settings → Appearance), which plugins' pixel font sizes
+/// follow as the theme's own text does. Read once, and again when the theme changes.
+pub fn text_scale() -> f64 {
+    TEXT_SCALE.with(|c| {
+        if let Some(s) = c.get() {
+            return s;
+        }
+        let s = nyx_theme::read_suite().map(|s| s.text_scale).unwrap_or(1.0).clamp(0.9, 1.25);
+        c.set(Some(s));
+        if !WATCHING.with(|w| w.replace(true)) {
+            nyx_theme::on_change(|| TEXT_SCALE.with(|c| c.set(None)));
+        }
+        s
+    })
+}
+
 /// CSS for a node's look properties (from the node or a patch).
 fn look_decls(props: &Map<String, Value>, max_height: Option<i32>) -> String {
     let mut d = String::new();
@@ -167,6 +188,7 @@ fn look_decls(props: &Map<String, Value>, max_height: Option<i32>) -> String {
         d.push_str(&format!("background-color: {c}; border-radius: 7px; "));
     }
     if let Some(f) = props.get("font_size").and_then(Value::as_f64) {
+        let f = f * text_scale();
         let f = match max_height {
             Some(h) => f.clamp(6.0, h as f64 * 0.75),
             None => f.clamp(6.0, 96.0),

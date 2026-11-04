@@ -103,13 +103,20 @@ fn values(q: &VecDeque<f64>) -> Vec<f64> {
 const DESKTOP_HISTORY: usize = 200;
 
 fn desktop_view(w: &Widget, temp: bool, gpu: bool) -> Node {
-    let large = w.size == "large";
+    // Free sizes (it's resizable): three graphs when there's room, else two.
+    let large = w.size == "large" || (w.size == "free" && w.height >= 280);
     let inner = (w.width - 32).max(64);
-    let graph_h = if large { 64 } else { 30 };
+    let sections = if large && (temp || gpu) { 3 } else { 2 };
+    let spacing = if large { 14 } else { 8 };
+    let graph_h = match w.size.as_str() {
+        "free" => (((w.height - 32 - (sections - 1) * spacing) / sections) - 22).clamp(20, 160),
+        _ if large => 64,
+        _ => 30,
+    };
     let section = |name: &str, id: &str, tint: &str| {
         vbox([
-            hbox([label(name).color("dim_text"), label("").expand(), label("–").id(&format!("{id}-value"))]),
-            graph(vec![], Some(100.0)).size(inner, graph_h).color(tint).id(&format!("{id}-graph")),
+            hbox([label(name).color("dim_text"), label("").expand(), label("–").id(format!("{id}-value"))]),
+            graph(vec![], Some(100.0)).size(inner, graph_h).color(tint).id(format!("{id}-graph")),
         ])
         .spacing(4)
     };
@@ -121,7 +128,7 @@ fn desktop_view(w: &Widget, temp: bool, gpu: bool) -> Node {
             rows.push(section("GPU", "gpu", "highlight"));
         }
     }
-    vbox(rows).spacing(if large { 14 } else { 8 })
+    vbox(rows).spacing(spacing)
 }
 
 fn desktop(plugin: Plugin<()>, inputs: std::sync::mpsc::Receiver<Input<()>>) {

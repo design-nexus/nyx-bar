@@ -247,6 +247,24 @@ impl Part {
     pub fn interactive(&self) -> bool {
         self.extra.get("interactive").and_then(|i| i.as_bool()).unwrap_or(false)
     }
+
+    /// A desktop part that can also be any size between `min` and `max` (`size = "free"`).
+    pub fn resizable(&self) -> bool {
+        self.extra.get("resizable").and_then(|i| i.as_bool()).unwrap_or(false)
+    }
+
+    fn pair(&self, key: &str) -> Option<(i32, i32)> {
+        let a = self.extra.get(key)?.as_array()?;
+        Some((a.first()?.as_integer()? as i32, a.get(1)?.as_integer()? as i32))
+    }
+
+    /// The smallest and largest free size, in logical pixels.
+    pub fn free_range(&self) -> ((i32, i32), (i32, i32)) {
+        let min = self.pair("min").unwrap_or((160, 120));
+        let max = self.pair("max").unwrap_or((672, 504));
+        let min = (min.0.clamp(64, 1200), min.1.clamp(64, 1200));
+        (min, (max.0.clamp(min.0, 1200), max.1.clamp(min.1, 1200)))
+    }
 }
 
 pub fn valid_id(id: &str) -> bool {
@@ -298,8 +316,8 @@ impl Manifest {
             }
             if kind == Kind::Desktop {
                 for part in &section.items {
-                    if let Some(bad) = part.sizes().iter().find(|s| desktop_size(s).is_none()) {
-                        bail!("{}: part {} has size {bad:?} (use compact, medium or large)", self.id, part.id);
+                    if let Some(bad) = part.sizes().iter().find(|s| desktop_size(s).is_none() && !(*s == "free" && part.resizable())) {
+                        bail!("{}: part {} has size {bad:?} (use compact, medium or large; free needs resizable)", self.id, part.id);
                     }
                 }
             }
@@ -478,6 +496,14 @@ units = "metric"
         assert_eq!(parts[1].sizes(), vec!["medium"]);
         assert!(!parts[1].interactive());
         assert_eq!(desktop_size("large"), Some((336, 336)));
+        assert_eq!(parts[0].free_range(), ((160, 120), (672, 504)));
+        let free = text.replace("interactive = true", "interactive = true\nresizable = true\nmin = [200, 100]\nmax = [900, 50]");
+        let m: Manifest = toml::from_str(&free).unwrap();
+        let part = &m.parts(Kind::Desktop)[0];
+        assert!(part.resizable());
+        assert_eq!(part.free_range(), ((200, 100), (900, 100)), "max is at least min");
+        let bad = text.replace("sizes = [\"large\", \"medium\"]", "sizes = [\"free\"]");
+        assert!(toml::from_str::<Manifest>(&bad).unwrap().validate().is_err(), "free needs resizable");
     }
 
     #[test]

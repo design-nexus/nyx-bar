@@ -132,6 +132,9 @@ id = "card"
 name = "Forecast"
 sizes = ["medium", "large", "compact"]   # 336×160, 336×336, 160×160 logical px
 interactive = false                      # true: clicks reach it; else they pass through
+resizable = false                        # true: also any size in edit mode ("free")
+min = [160, 120]                         # free sizes' range, logical px
+max = [672, 504]
 default = true
 ```
 
@@ -142,6 +145,11 @@ default = true
 ```
 
 Send one item per part, or one per monitor (with `monitor`) when the sizes differ.
+A free size comes as `"size":"free"` with its `width` and `height`. Named sizes grow
+with the suite's text scale, as `font_size` does everywhere. On interactive widgets a
+click opens the item's popover and a right click its menu, as in the bar. While the
+**Add widget** list is open, the plugin also gets a widget on monitor `preview`, which
+it draws like any other.
 Views are kept to the widget's size, inside the card's 16 px padding. While windows
 cover every copy of a widget, the plugin gets `visible: false` for that item (and for
 the plugin when nothing of it can be seen); pause then. An interval plugin is run

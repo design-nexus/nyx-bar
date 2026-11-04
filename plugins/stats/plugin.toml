@@ -25,6 +25,10 @@ id = "graphs"
 name = "System graphs"
 description = "CPU, memory and temperature over the last ten minutes."
 sizes = ["large", "medium"]
+# Or any size in between, dragged in edit mode.
+resizable = true
+min = [240, 140]
+max = [672, 504]
 default = true
 
 [settings]
