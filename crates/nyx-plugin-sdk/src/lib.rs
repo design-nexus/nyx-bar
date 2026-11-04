@@ -38,7 +38,12 @@ use std::sync::{Arc, Mutex};
 #[derive(Debug)]
 pub enum Input<T> {
     Event(Event),
+    /// Whether anything the plugin shows can be seen.
     Visible(bool),
+    /// Whether one item can be seen (desktop widgets under windows can't).
+    ItemVisible { item: String, visible: bool },
+    /// The desktop widgets placed from this plugin (see [`Plugin::widgets`]).
+    Widgets(Vec<protocol::Widget>),
     Settings(Value),
     Monitors(Vec<protocol::MonitorInfo>),
     Desktop(protocol::DesktopState),
@@ -83,6 +88,8 @@ impl<T: Send + 'static> Plugin<T> {
                 let input = match protocol::parse_host_line(&line) {
                     Ok(HostMsg::Event(e)) => Input::Event(e),
                     Ok(HostMsg::Visible { visible, item: None }) => Input::Visible(visible),
+                    Ok(HostMsg::Visible { visible, item: Some(item) }) => Input::ItemVisible { item, visible },
+                    Ok(HostMsg::Widgets { widgets }) => Input::Widgets(widgets),
                     Ok(HostMsg::Settings { settings }) => Input::Settings(settings),
                     Ok(HostMsg::Monitors { monitors }) => Input::Monitors(monitors),
                     Ok(HostMsg::Desktop(d)) => Input::Desktop(d),
@@ -125,6 +132,12 @@ impl<T: Send + 'static> Plugin<T> {
         self.hello.settings.get(key).and_then(Value::as_i64).unwrap_or(default)
     }
 
+    /// The desktop widgets placed when the plugin started; [`Input::Widgets`] brings
+    /// later changes.
+    pub fn widgets(&self) -> &[protocol::Widget] {
+        &self.hello.widgets
+    }
+
     /// Whether the user turned on this part (or the whole plugin).
     pub fn enabled(&self, part: &str) -> bool {
         self.hello.items.iter().any(|p| p == part || p == "main")
@@ -144,8 +157,14 @@ impl<T: Send + 'static> Plugin<T> {
 
     /// Set properties on node `node` of `item`.
     pub fn patch<I: IntoIterator<Item = (&'static str, Value)>>(&self, item: &str, node: &str, set: I) {
+        self.patch_on(item, None, node, set);
+    }
+
+    /// [`Plugin::patch`] for one monitor's copy of an item.
+    pub fn patch_on<I: IntoIterator<Item = (&'static str, Value)>>(&self, item: &str, monitor: Option<&str>, node: &str, set: I) {
         let set: Map<String, Value> = set.into_iter().map(|(k, v)| (k.to_string(), v)).collect();
-        self.send(&PluginMsg::Patch(Patch { item: item.into(), monitor: None, nodes: vec![NodePatch { id: node.into(), set }] }));
+        let monitor = monitor.map(String::from);
+        self.send(&PluginMsg::Patch(Patch { item: item.into(), monitor, nodes: vec![NodePatch { id: node.into(), set }] }));
     }
 
     pub fn popover(&self, item: &str, view: Option<Node>) {

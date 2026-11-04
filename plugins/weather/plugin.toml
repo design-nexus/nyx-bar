@@ -5,7 +5,7 @@ author = "Design Nexus"
 license = "MIT"
 description = "Current conditions from Nyx Weather."
 api_version = 1
-kinds = ["bar"]
+kinds = ["bar", "desktop"]
 exec = ["sh", "weather.sh"]
 needs = ["nyx-weather"]
 
@@ -23,4 +23,17 @@ section = "right"
 id = "now"
 name = "Current conditions"
 description = "Click opens Nyx Weather; right-click its settings."
+default = true
+
+[desktop]
+exec = ["sh", "weather-desktop.sh"]
+mode = "interval"
+interval = 600
+
+[[desktop.items]]
+id = "card"
+name = "Weather card"
+description = "Current conditions. Click opens Nyx Weather."
+sizes = ["medium", "compact", "large"]
+interactive = true
 default = true

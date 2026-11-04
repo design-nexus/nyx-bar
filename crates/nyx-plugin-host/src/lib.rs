@@ -655,6 +655,12 @@ impl Supervisor {
                         self.spec.hello.settings = settings;
                         now_please = true;
                     }
+                    // Desktop widgets moved, resized, added: draw them again for it.
+                    Ok(Ev::Send(HostMsg::Widgets { widgets })) => {
+                        self.spec.hello.widgets = widgets;
+                        now_please = true;
+                    }
+                    Ok(Ev::Send(HostMsg::Monitors { monitors })) => self.spec.hello.monitors = monitors,
                     _ => {}
                 }
             }
@@ -746,6 +752,7 @@ mod tests {
                 permissions: vec![],
                 frame_socket: None,
                 bar_height: Some(32),
+                widgets: vec![],
             },
             limits: Limits::resolve(p.trust.is_trusted(), &p.manifest.limits, None),
             plugin: p,

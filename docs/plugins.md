@@ -1,7 +1,7 @@
 # Writing Nyx plugins
 
 A Nyx plugin is a folder with a `plugin.toml` and a program in any language. The host
-(Nyx Bar today; the Control Center and desktop widgets later) starts the program and
+(Nyx Bar, Nyx Desktop Widgets; the Control Center later) starts the program and
 talks to it in JSON lines: one object per line, the host's on the program's stdin,
 the program's on its stdout. Diagnostics go to stderr, which ends up in the journal.
 
@@ -85,6 +85,7 @@ items it likes (the tray sends `tray-1`, `tray-2`, …).
 | `settings` | `settings` | the user changed the plugin's settings |
 | `visible` | `visible`, `item?` | whether its items can be seen; pause when not |
 | `desktop` | `monitors`, `workspaces`, `active_class`, `active_title` | Hyprland's state (needs `desktop`) |
+| `widgets` | `widgets` | its desktop widgets were added, removed, moved or resized |
 | `theme` | `theme` | the theme changed |
 | `event` | see below | the user did something |
 | `shutdown` | | exit now (you're killed after a second) |
@@ -116,6 +117,35 @@ if there is one, a right click the menu if there is one; else the plugin gets an
 
 Menu entries: `id`, `label`, `icon?`, `checked?` (a check mark), `enabled`,
 `separator`, `children` (a submenu).
+
+## Desktop widgets
+
+A `desktop` part is a widget on the desktop, behind windows. Its manifest entry says
+which sizes it comes in (the first is its default) and whether it takes clicks:
+
+```toml
+[desktop]
+mode = "stream"
+
+[[desktop.items]]
+id = "card"
+name = "Forecast"
+sizes = ["medium", "large", "compact"]   # 336×160, 336×336, 160×160 logical px
+interactive = false                      # true: clicks reach it; else they pass through
+default = true
+```
+
+`hello` (and a `widgets` message whenever they change) lists where the user put them:
+
+```json
+"widgets":[{"item":"card","monitor":"DP-1","size":"medium","width":336,"height":160,"options":{"units":"imperial"}}]
+```
+
+Send one item per part, or one per monitor (with `monitor`) when the sizes differ.
+Views are kept to the widget's size, inside the card's 16 px padding. While windows
+cover every copy of a widget, the plugin gets `visible: false` for that item (and for
+the plugin when nothing of it can be seen); pause then. An interval plugin is run
+again at once when its widgets change.
 
 ## Views
 

@@ -33,6 +33,9 @@ pub enum HostMsg {
     },
     /// Hyprland's workspaces, for plugins granted `desktop`.
     Desktop(DesktopState),
+    /// The desktop widgets placed from this plugin, again whenever one is added,
+    /// removed, moved to another monitor or resized.
+    Widgets { widgets: Vec<Widget> },
     /// The theme changed (light or dark, its name).
     Theme { theme: ThemeInfo },
     Event(Event),
@@ -64,6 +67,26 @@ pub struct Hello {
     /// Logical height of the bar, for bar plugins.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bar_height: Option<i32>,
+    /// The desktop widgets placed from this plugin, for desktop plugins.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub widgets: Vec<Widget>,
+}
+
+/// One placed desktop widget. An item whose `monitor` is set shows on that monitor's
+/// widget only; without one, on every widget of its part.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct Widget {
+    /// The part, which is also the item to send for it.
+    pub item: String,
+    pub monitor: String,
+    /// The size the user picked (`compact`, `medium`, `large`, or `free`).
+    pub size: String,
+    /// Logical pixels the view gets.
+    pub width: i32,
+    pub height: i32,
+    /// This placement's own options, from the layout file.
+    #[serde(default, skip_serializing_if = "Value::is_null")]
+    pub options: Value,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -396,7 +419,18 @@ mod tests {
             permissions: vec!["network".into()],
             frame_socket: None,
             bar_height: Some(32),
+            widgets: vec![],
         }));
+        round(&HostMsg::Widgets {
+            widgets: vec![Widget {
+                item: "large".into(),
+                monitor: "DP-1".into(),
+                size: "large".into(),
+                width: 336,
+                height: 336,
+                options: json!({"seconds": true}),
+            }],
+        });
         round(&HostMsg::Visible { visible: false, item: None });
         round(&HostMsg::Event(Event {
             item: "volume".into(),

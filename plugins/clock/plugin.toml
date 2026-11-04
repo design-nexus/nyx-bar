@@ -5,7 +5,7 @@ author = "Design Nexus"
 license = "MIT"
 description = "The time and date, with this month's calendar."
 api_version = 1
-kinds = ["bar"]
+kinds = ["bar", "desktop"]
 exec = ["sh", "clock.sh"]
 needs = ["date"]
 
@@ -20,6 +20,21 @@ name = "Time and date"
 description = "Click for this month's calendar."
 default = true
 
+[desktop]
+exec = ["sh", "clock-desktop.sh"]
+mode = "interval"
+interval = 60
+
+[[desktop.items]]
+id = "large"
+name = "Large clock"
+description = "The time and date in large type; large adds this month's calendar."
+sizes = ["medium", "large", "compact"]
+default = true
+
 [settings]
-# strftime(3) format.
+# strftime(3) format, in the bar.
 format = "%a %b %-d  %H:%M"
+# The desktop clock's time and date.
+time_format = "%H:%M"
+date_format = "%A, %B %-d"

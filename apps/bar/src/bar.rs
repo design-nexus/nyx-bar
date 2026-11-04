@@ -463,6 +463,7 @@ fn spawn_plugin(s: &Rc<Shared>, p: Plugin, parts: Vec<String>, settings: serde_j
         permissions: vec![],
         frame_socket: None,
         bar_height: Some(s.height()),
+        widgets: vec![],
     };
     let spec = Spec { plugin: p.clone(), kind: Kind::Bar, host: s.host_name().into(), hello, limits: limits.clone() };
     let (tx, rx) = async_channel::unbounded();

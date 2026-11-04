@@ -468,7 +468,7 @@ fn place(a: &Args, m: &Manifest, choice: &[(Kind, Vec<String>)], ask: bool) -> R
             Kind::Desktop => {
                 let mut doc = layout::read(&file)?;
                 for part in parts {
-                    let size = m.parts(*k).into_iter().find(|p| p.id == *part).and_then(|p| p.extra.get("sizes").and_then(|s| s.as_array()).and_then(|s| s.first()).and_then(|s| s.as_str()).map(String::from)).unwrap_or_else(|| "medium".into());
+                    let size = m.parts(*k).into_iter().find(|p| p.id == *part).map(|p| p.sizes()[0].clone()).unwrap_or_else(|| "medium".into());
                     layout::desktop_append(&mut doc, &format!("{}/{part}", m.id), &size);
                 }
                 layout::write(&file, &doc)?;
@@ -905,6 +905,7 @@ fn check(a: &Args) -> Result<()> {
         permissions: vec![],
         frame_socket: None,
         bar_height: Some(32),
+        widgets: vec![],
     };
     let spec = nyx_plugin_host::Spec {
         limits: nyx_plugin_host::limits::Limits::third_party(),

@@ -5,7 +5,7 @@ author = "Design Nexus"
 license = "MIT"
 description = "CPU, memory, temperature and GPU. Click for the last few minutes as graphs; right-click opens Nyx Activity."
 api_version = 1
-kinds = ["bar"]
+kinds = ["bar", "desktop"]
 exec = ["nyx-bar-stats"]
 
 [bar]
@@ -15,6 +15,16 @@ section = "right"
 [[bar.items]]
 id = "stats"
 name = "CPU, memory and temperature"
+default = true
+
+[desktop]
+mode = "stream"
+
+[[desktop.items]]
+id = "graphs"
+name = "System graphs"
+description = "CPU, memory and temperature over the last ten minutes."
+sizes = ["large", "medium"]
 default = true
 
 [settings]

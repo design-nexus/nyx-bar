@@ -224,6 +224,31 @@ pub struct Part {
 /// The part a plugin without `items` has: everything it shows.
 pub const WHOLE: &str = "main";
 
+/// Desktop widget sizes, in logical pixels.
+pub const DESKTOP_SIZES: [(&str, i32, i32); 3] = [("compact", 160, 160), ("medium", 336, 160), ("large", 336, 336)];
+
+pub fn desktop_size(name: &str) -> Option<(i32, i32)> {
+    DESKTOP_SIZES.iter().find(|(n, _, _)| *n == name).map(|&(_, w, h)| (w, h))
+}
+
+impl Part {
+    /// A desktop part's sizes, the first being its default.
+    pub fn sizes(&self) -> Vec<String> {
+        let sizes: Vec<String> = self
+            .extra
+            .get("sizes")
+            .and_then(|s| s.as_array())
+            .map(|a| a.iter().filter_map(|s| s.as_str().map(String::from)).collect())
+            .unwrap_or_default();
+        if sizes.is_empty() { vec!["medium".into()] } else { sizes }
+    }
+
+    /// A desktop part that takes clicks; others let them through to the desktop.
+    pub fn interactive(&self) -> bool {
+        self.extra.get("interactive").and_then(|i| i.as_bool()).unwrap_or(false)
+    }
+}
+
 pub fn valid_id(id: &str) -> bool {
     !id.is_empty()
         && id.len() <= 64
@@ -269,6 +294,13 @@ impl Manifest {
                 }
                 if !seen.insert(part.id.clone()) {
                     bail!("{}: part {} appears twice in {}", self.id, part.id, kind.name());
+                }
+            }
+            if kind == Kind::Desktop {
+                for part in &section.items {
+                    if let Some(bad) = part.sizes().iter().find(|s| desktop_size(s).is_none()) {
+                        bail!("{}: part {} has size {bad:?} (use compact, medium or large)", self.id, part.id);
+                    }
                 }
             }
             if let Some(s) = &section.section
@@ -429,6 +461,23 @@ units = "metric"
         assert!(bad("section = \"right\"", "section = \"middle\""));
         assert!(bad("[permissions]", "[permissions]\nread = [\"relative\"]"));
         assert!(bad("[permissions]", "[permissions]\nroot = true"));
+        assert!(bad("[settings]", "[[desktop.items]]\nid = \"card\"\nname = \"Card\"\nsizes = [\"huge\"]\n[settings]"));
+    }
+
+    #[test]
+    fn desktop_parts() {
+        let text = WEATHER.replace(
+            "[settings]",
+            "[[desktop.items]]\nid = \"card\"\nname = \"Card\"\nsizes = [\"large\", \"medium\"]\ninteractive = true\n[[desktop.items]]\nid = \"small\"\nname = \"Small\"\n[settings]",
+        );
+        let m: Manifest = toml::from_str(&text).unwrap();
+        m.validate().unwrap();
+        let parts = m.parts(Kind::Desktop);
+        assert_eq!(parts[0].sizes(), vec!["large", "medium"]);
+        assert!(parts[0].interactive());
+        assert_eq!(parts[1].sizes(), vec!["medium"]);
+        assert!(!parts[1].interactive());
+        assert_eq!(desktop_size("large"), Some((336, 336)));
     }
 
     #[test]

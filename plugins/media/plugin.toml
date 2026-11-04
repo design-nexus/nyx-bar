@@ -5,7 +5,7 @@ author = "Design Nexus"
 license = "MIT"
 description = "The track that's playing, with album art. Click for controls; middle-click plays or pauses. Hidden when nothing plays."
 api_version = 1
-kinds = ["bar"]
+kinds = ["bar", "desktop"]
 exec = ["nyx-bar-media"]
 
 [permissions]
@@ -20,6 +20,17 @@ section = "right"
 [[bar.items]]
 id = "media"
 name = "Now playing"
+default = true
+
+[desktop]
+mode = "stream"
+
+[[desktop.items]]
+id = "player"
+name = "Player"
+description = "Album art, the track and its controls. Hidden when nothing plays."
+sizes = ["medium", "large"]
+interactive = true
 default = true
 
 [settings]

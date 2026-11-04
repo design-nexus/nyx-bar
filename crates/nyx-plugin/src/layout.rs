@@ -197,7 +197,8 @@ pub fn cc_remove(doc: &mut DocumentMut, plugin: &str, part: Option<&str>) {
     }
 }
 
-/// Add a desktop widget on every monitor, top left, if it isn't placed yet.
+/// Add a desktop widget on every monitor, top left below the others there, if it isn't
+/// placed yet.
 pub fn desktop_append(doc: &mut DocumentMut, part: &str, size: &str) {
     if !doc.contains_key("version") {
         doc.insert("version", value(1));
@@ -213,12 +214,21 @@ pub fn desktop_append(doc: &mut DocumentMut, part: &str, size: &str) {
     if widgets.iter().any(|w| w.get("part").and_then(|p| p.as_str()) == Some(part)) {
         return;
     }
+    // Below the top-left widgets already there, by their sizes.
+    let below: i64 = widgets
+        .iter()
+        .filter(|w| w.get("anchor").and_then(|a| a.as_str()).unwrap_or("top-left") == "top-left")
+        .map(|w| {
+            let size = w.get("size").and_then(|s| s.as_str()).unwrap_or("medium");
+            crate::manifest::desktop_size(size).map_or(160, |(_, h)| h) as i64 + 24
+        })
+        .sum();
     let mut t = Table::new();
     t.insert("part", value(part));
     t.insert("anchor", value("top-left"));
     let mut offset = Array::new();
     offset.push(48);
-    offset.push(48 + 64 * widgets.len() as i64);
+    offset.push(48 + below);
     t.insert("offset", value(offset));
     t.insert("size", value(size));
     widgets.push(t);
@@ -307,6 +317,8 @@ mod tests {
         desktop_append(&mut doc, "nyx.weather/card", "medium");
         desktop_append(&mut doc, "nyx.weather/card", "medium");
         assert_eq!(doc.to_string().matches("[[all.widget]]").count(), 2);
+        // The second goes below the first, a large one: 48 + 336 + 24.
+        assert!(doc.to_string().contains("offset = [48, 408]"), "{doc}");
         desktop_remove(&mut doc, "nyx.weather", None);
         assert_eq!(doc.to_string().matches("[[all.widget]]").count(), 1);
     }

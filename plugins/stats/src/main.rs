@@ -1,6 +1,10 @@
 //! Nyx Bar stats: CPU, memory, the hottest CPU sensor and, when a GPU reports it, its
 //! load. Sampled every few seconds, and only while the bar is visible.
+//!
+//! As a desktop widget (`graphs`): the last ten minutes as graphs, sampled all along
+//! and drawn only while the widget can be seen.
 
+use nyx_plugin_sdk::protocol::Widget;
 use nyx_plugin_sdk::view::*;
 use nyx_plugin_sdk::{Input, Plugin, have};
 use std::collections::VecDeque;
@@ -95,8 +99,101 @@ fn values(q: &VecDeque<f64>) -> Vec<f64> {
     q.iter().map(|v| (v * 10.0).round() / 10.0).collect()
 }
 
+/// Ten minutes at the default three seconds.
+const DESKTOP_HISTORY: usize = 200;
+
+fn desktop_view(w: &Widget, temp: bool, gpu: bool) -> Node {
+    let large = w.size == "large";
+    let inner = (w.width - 32).max(64);
+    let graph_h = if large { 64 } else { 30 };
+    let section = |name: &str, id: &str, tint: &str| {
+        vbox([
+            hbox([label(name).color("dim_text"), label("").expand(), label("–").id(&format!("{id}-value"))]),
+            graph(vec![], Some(100.0)).size(inner, graph_h).color(tint).id(&format!("{id}-graph")),
+        ])
+        .spacing(4)
+    };
+    let mut rows = vec![section("CPU", "cpu", "accent"), section("Memory", "mem", "success")];
+    if large {
+        if temp {
+            rows.push(section("Temperature", "temp", "warning"));
+        } else if gpu {
+            rows.push(section("GPU", "gpu", "highlight"));
+        }
+    }
+    vbox(rows).spacing(if large { 14 } else { 8 })
+}
+
+fn desktop(plugin: Plugin<()>, inputs: std::sync::mpsc::Receiver<Input<()>>) {
+    let every = plugin.setting_i64("every", 3).clamp(1, 60) as u64;
+    let tick = plugin.data();
+    std::thread::spawn(move || {
+        loop {
+            tick(());
+            std::thread::sleep(Duration::from_secs(every));
+        }
+    });
+    let mut s = Sampler::new();
+    let (has_temp, has_gpu) = (s.temp.is_some(), s.gpu.is_some());
+    let mut q = [VecDeque::new(), VecDeque::new(), VecDeque::new(), VecDeque::new()];
+    let mut now = [None::<f64>; 4];
+    let mut widgets: Vec<Widget> = plugin.widgets().to_vec();
+    let mut visible = true;
+    let send_items = |widgets: &[Widget]| {
+        for w in widgets.iter().filter(|w| w.item == "graphs") {
+            plugin.item(item("graphs").monitor(&w.monitor).view(desktop_view(w, has_temp, has_gpu)));
+        }
+    };
+    let send_values = |q: &[VecDeque<f64>; 4], now: &[Option<f64>; 4]| {
+        let names = ["cpu", "mem", "temp", "gpu"];
+        for (i, name) in names.iter().enumerate() {
+            let Some(v) = now[i] else { continue };
+            let text = if *name == "temp" { format!("{v:.0} °C") } else { format!("{v:.0}%") };
+            plugin.patch("graphs", &format!("{name}-value"), [("text", text.into())]);
+            plugin.patch("graphs", &format!("{name}-graph"), [("values", values(&q[i]).into())]);
+        }
+    };
+    send_items(&widgets);
+    for input in inputs {
+        match input {
+            Input::Data(()) => {
+                let Some(cpu) = s.cpu() else { continue };
+                let samples = [Some(cpu), s.memory().map(|m| m.0), s.temp(), s.gpu()];
+                for (i, v) in samples.into_iter().enumerate() {
+                    if let Some(v) = v {
+                        if q[i].len() == DESKTOP_HISTORY {
+                            q[i].pop_front();
+                        }
+                        q[i].push_back(v);
+                    }
+                    now[i] = v;
+                }
+                if visible {
+                    send_values(&q, &now);
+                }
+            }
+            Input::Visible(v) => {
+                if v && !visible {
+                    send_values(&q, &now);
+                }
+                visible = v;
+            }
+            Input::Widgets(w) => {
+                widgets = w;
+                send_items(&widgets);
+                send_values(&q, &now);
+            }
+            Input::Shutdown => break,
+            _ => {}
+        }
+    }
+}
+
 fn main() {
     let (plugin, inputs) = Plugin::<()>::start();
+    if plugin.hello.kind == "desktop" {
+        return desktop(plugin, inputs);
+    }
     let mut every = plugin.setting_i64("every", 3).clamp(1, 60) as u64;
     let mut graphs = plugin.setting_bool("graphs", false);
     let mut show_gpu = plugin.setting_bool("gpu", true);

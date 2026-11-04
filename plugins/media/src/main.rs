@@ -1,7 +1,9 @@
 //! Nyx Bar now playing: the current MPRIS player's track, its album art in the
 //! popover with play/pause, previous, next and a seek slider.
+//!
+//! As a desktop widget (`player`): album art, the track and the controls.
 
-use nyx_plugin_sdk::protocol::EventKind;
+use nyx_plugin_sdk::protocol::{EventKind, Widget};
 use nyx_plugin_sdk::services::mpris::{self, Player};
 use nyx_plugin_sdk::view::*;
 use nyx_plugin_sdk::{Input, Plugin};
@@ -112,8 +114,87 @@ fn show(plugin: &Plugin<Option<Player>>, p: &Option<Player>, max: usize) {
     plugin.popover("media", Some(vbox(rows).spacing(8).width(220)));
 }
 
+fn player_view(w: &Widget, p: &Player) -> Node {
+    let large = w.size == "large";
+    let art_size = if large { 168 } else { (w.height - 32).max(64) };
+    let art = p.art.as_deref().and_then(art_file);
+    let cover = match &art {
+        Some(f) => image_path(&f.to_string_lossy()).size(art_size, art_size),
+        None => vbox([icon_sized("audio-x-generic-symbolic", art_size / 3)]).size(art_size, art_size).background("field"),
+    };
+    let play_icon = if p.playing { "media-playback-pause-symbolic" } else { "media-playback-start-symbolic" };
+    let controls = hbox([
+        button("previous", None, Some("media-skip-backward-symbolic")),
+        button("play", None, Some(play_icon)),
+        button("next", None, Some("media-skip-forward-symbolic")),
+    ])
+    .spacing(8);
+    let max = if large { 34 } else { 22 };
+    let title = markup(format!("<b>{}</b>", escape(&shorten(&p.title, max))));
+    let artist = label(shorten(if p.artist.is_empty() { &p.identity } else { &p.artist }, max)).color("dim_text");
+    if large {
+        vbox([cover, vbox([title, artist]).spacing(2), controls]).spacing(12)
+    } else {
+        hbox([cover, vbox([title, artist, label("").expand(), controls]).spacing(2).expand()]).spacing(14)
+    }
+}
+
+fn show_player(plugin: &Plugin<Option<Player>>, widgets: &[Widget], p: &Option<Player>) {
+    for w in widgets.iter().filter(|w| w.item == "player") {
+        let it = match p {
+            Some(p) => item("player").monitor(&w.monitor).view(player_view(w, p)).tooltip(format!("{} — {}", p.title, p.identity)),
+            None => item("player").monitor(&w.monitor).hidden(true),
+        };
+        plugin.item(it);
+    }
+}
+
+fn desktop(plugin: Plugin<Option<Player>>, inputs: std::sync::mpsc::Receiver<Input<Option<Player>>>) {
+    mpris::watch(Duration::from_secs(5), plugin.data());
+    let mut widgets = plugin.widgets().to_vec();
+    let mut current: Option<Player> = None;
+    show_player(&plugin, &widgets, &current);
+    for input in inputs {
+        match input {
+            Input::Data(p) => {
+                // Position ticks change nothing the widget shows.
+                let same = |a: &Player, b: &Player| {
+                    (&a.title, &a.artist, &a.art, a.playing, &a.identity) == (&b.title, &b.artist, &b.art, b.playing, &b.identity)
+                };
+                let changed = match (&current, &p) {
+                    (Some(a), Some(b)) => !same(a, b),
+                    (None, None) => false,
+                    _ => true,
+                };
+                current = p;
+                if changed {
+                    show_player(&plugin, &widgets, &current);
+                }
+            }
+            Input::Widgets(w) => {
+                widgets = w;
+                show_player(&plugin, &widgets, &current);
+            }
+            Input::Event(e) => {
+                let Some(p) = &current else { continue };
+                match (e.kind, e.control.as_deref()) {
+                    (EventKind::Action, Some("play")) => mpris::play_pause(&p.bus),
+                    (EventKind::Action, Some("next")) => mpris::next(&p.bus),
+                    (EventKind::Action, Some("previous")) => mpris::previous(&p.bus),
+                    _ => {}
+                }
+            }
+            Input::Shutdown => break,
+            _ => {}
+        }
+    }
+}
+
 fn main() {
     let (plugin, inputs) = Plugin::<Option<Player>>::start();
+    if plugin.hello.kind == "desktop" {
+        return desktop(plugin, inputs);
+    }
     let mut max = plugin.setting_i64("max_chars", 32).clamp(8, 120) as usize;
     let send = plugin.data();
     mpris::watch(Duration::from_secs(5), send);
