@@ -427,6 +427,28 @@ fn position(a: &Args) -> Result<Position> {
     })
 }
 
+/// Lists the user's layout file doesn't set yet, filled in from what the host uses now
+/// (its built-in layout under NyxOS's defaults), so placing one part doesn't replace the
+/// rest of a section NyxOS set up.
+fn seed_from_layers(doc: &mut toml_edit::DocumentMut, domain: &str, keys: &[&str], builtin: Option<&str>) {
+    let mut effective: toml::Table = builtin.and_then(|b| b.parse().ok()).unwrap_or_default();
+    nyx_config::merge(&mut effective, nyx_config::Layers::standard().merged(domain).unwrap_or_default());
+    for key in keys {
+        if doc.get(key).is_some() {
+            continue;
+        }
+        let Some(value) = effective.get(*key) else { continue };
+        // Through TOML text, so arrays of tables come out as toml_edit writes them.
+        let mut one = toml::Table::new();
+        one.insert(key.to_string(), value.clone());
+        if let Ok(parsed) = toml::to_string(&one).unwrap_or_default().parse::<toml_edit::DocumentMut>()
+            && let Some(item) = parsed.get(key)
+        {
+            doc.insert(key, item.clone());
+        }
+    }
+}
+
 /// Put newly chosen parts in their hosts' layouts.
 fn place(a: &Args, m: &Manifest, choice: &[(Kind, Vec<String>)], ask: bool) -> Result<()> {
     for (k, parts) in choice {
@@ -436,7 +458,8 @@ fn place(a: &Args, m: &Manifest, choice: &[(Kind, Vec<String>)], ask: bool) -> R
         let file = paths::layout_file(*k);
         match k {
             Kind::Bar => {
-                let mut doc = layout::read_bar(&file)?;
+                let mut doc = layout::read(&file)?;
+                seed_from_layers(&mut doc, "bar", &["left", "center", "right"], Some(layout::DEFAULT_BAR));
                 let default = m.section(Kind::Bar).section.unwrap_or_else(|| "right".into());
                 let sections = ["left", "center", "right"];
                 for part in parts {
@@ -460,6 +483,7 @@ fn place(a: &Args, m: &Manifest, choice: &[(Kind, Vec<String>)], ask: bool) -> R
             }
             Kind::ControlCenter => {
                 let mut doc = layout::read(&file)?;
+                seed_from_layers(&mut doc, "control-center", &["pages"], None);
                 for part in parts {
                     let size = m.parts(*k).into_iter().find(|p| p.id == *part).and_then(|p| p.extra.get("sizes").and_then(|s| s.as_array()).and_then(|s| s.first()).and_then(|s| s.as_str()).map(String::from)).unwrap_or_else(|| "2x1".into());
                     layout::cc_append(&mut doc, &layout::tile_id(&m.id, part), &size);
@@ -989,4 +1013,29 @@ fn pack(a: &Args) -> Result<()> {
     println!("Made {}.\nPublish it (a release asset), then add to plugin.toml:\n", out.display());
     println!("[artifacts]\n{} = {{ url = \"https://…/{}\", sha256 = \"{hash}\" }}", nyx_plugin::manifest::platform(), out.file_name().unwrap_or_default().to_string_lossy());
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn placing_starts_from_the_sections_nyxos_set_up() {
+        let d = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(d.path().join("defaults")).unwrap();
+        std::fs::write(d.path().join("defaults/bar.toml"), "right = [\"nyx.clock\", \"nyx.system\"]\n").unwrap();
+        // The only test here that touches the environment.
+        unsafe {
+            std::env::set_var("NYX_CONFIG_DEFAULTS", d.path().join("defaults"));
+            std::env::set_var("NYX_CONFIG_SYSTEM", d.path().join("system"));
+            std::env::set_var("XDG_CONFIG_HOME", d.path().join("config"));
+        }
+        let mut doc: toml_edit::DocumentMut = "# commented template\nheight = 30\n".parse().unwrap();
+        seed_from_layers(&mut doc, "bar", &["left", "center", "right"], Some(layout::DEFAULT_BAR));
+        layout::bar_place(&mut doc, None, "x.weather", "right", &Position::End);
+        let right: Vec<String> = doc["right"].as_array().unwrap().iter().filter_map(|v| v.as_str().map(String::from)).collect();
+        assert_eq!(right, ["nyx.clock", "nyx.system", "x.weather"]);
+        assert!(doc.get("left").is_some(), "the built-in left section comes along");
+        assert!(doc.to_string().contains("# commented template"));
+    }
 }

@@ -109,11 +109,16 @@ impl Shared {
 }
 
 pub fn start(app: &gtk::Application, only: Option<String>) {
+    // A template to edit, commented out: what's set in the user's file wins over NyxOS's
+    // defaults, so nothing is set until the user sets it.
     let path = Config::path();
     if !path.exists() {
-        let _ = paths::write_atomic(&path, nyx_plugin::layout::DEFAULT_BAR);
+        let template: String = std::iter::once("# Your bar layout: uncomment and change what you want (NyxOS's defaults apply otherwise).\n".to_string())
+            .chain(nyx_plugin::layout::DEFAULT_BAR.lines().map(|l| if l.is_empty() { "\n".to_string() } else { format!("# {l}\n") }))
+            .collect();
+        let _ = paths::write_atomic(&path, &template);
     }
-    let config = Config::load(&path).unwrap_or_else(|e| {
+    let config = Config::load_layered(&nyx_config::Layers::standard()).unwrap_or_else(|e| {
         eprintln!("nyx-bar: {e}; using the default layout");
         Config::default()
     });
@@ -239,9 +244,21 @@ fn monitor_dir(path: &std::path::Path, f: impl Fn(Option<String>) + 'static) -> 
 fn watch_files(s: &Rc<Shared>) {
     let mut monitors = vec![];
     let ws = Rc::downgrade(s);
-    monitors.extend(monitor_file(&Config::path(), move || {
-        let Some(s) = ws.upgrade() else { return };
-        match Config::load(&Config::path()) {
+    // The layout changed in any layer (by hand, or NyxOS's defaults in an update).
+    let (tx, rx) = async_channel::unbounded::<()>();
+    let store = nyx_config::Store::new(nyx_bar_core::DOMAIN, toml::Table::new());
+    match store.watch(move || {
+        let _ = tx.send_blocking(());
+    }) {
+        Ok(w) => std::mem::forget(w),
+        Err(e) => eprintln!("nyx-bar: can't watch the layout: {e:#}"),
+    }
+    glib::spawn_future_local(async move {
+        while rx.recv().await.is_ok() {
+            glib::timeout_future(std::time::Duration::from_millis(150)).await;
+            while rx.try_recv().is_ok() {}
+            let Some(s) = ws.upgrade() else { return };
+        match Config::load_layered(&nyx_config::Layers::standard()) {
             Ok(c) => {
                 let height_changed = c.height != s.height();
                 *s.config.borrow_mut() = c;
@@ -255,7 +272,8 @@ fn watch_files(s: &Rc<Shared>) {
             }
             Err(e) => eprintln!("nyx-bar: {e}; keeping the layout as it was"),
         }
-    }));
+        }
+    });
     let ws = Rc::downgrade(s);
     monitors.extend(monitor_file(&paths::state_file(), move || {
         if let Some(s) = ws.upgrade() {

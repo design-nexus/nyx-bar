@@ -13,6 +13,7 @@ path = "src/main.rs"
 
 [dependencies]
 async-channel.workspace = true
+nyx-config.workspace = true
 gtk.workspace = true
 gtk4-layer-shell.workspace = true
 nyx-bar-core = { path = "../../crates/nyx-bar-core" }

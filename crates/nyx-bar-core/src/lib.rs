@@ -1,7 +1,8 @@
 //! Nyx Bar's logic without GTK.
 //!
-//! - [`Config`]: `~/.config/nyx/bar.toml`, the sections, height, plugin settings and
-//!   limits, and per-monitor layouts.
+//! - [`Config`]: the sections, height, plugin settings and limits, and per-monitor
+//!   layouts: the built-in layout, then NyxOS's defaults (`/etc/nyxos/defaults/bar.toml`)
+//!   and an administrator's, then the user's `~/.config/nyx/bar.toml`.
 //! - [`arrange`]: which items go where, from the layout and the items plugins show.
 //! - [`should_hide`]: hide on a monitor showing a true-fullscreen window.
 
@@ -11,6 +12,9 @@ use std::collections::BTreeMap;
 use std::path::Path;
 
 pub const DEFAULT_HEIGHT: i32 = 32;
+
+/// The bar's NyxOS domain. The bar never writes its file.
+pub const DOMAIN: nyx_config::Domain = nyx_config::Domain { name: "bar", version: 0, migrations: &[] };
 
 #[derive(Debug, Clone, Default, PartialEq, Deserialize)]
 pub struct Sections {
@@ -67,6 +71,15 @@ impl Default for Config {
 impl Config {
     pub fn path() -> std::path::PathBuf {
         nyx_plugin::paths::layout_file(nyx_plugin::Kind::Bar)
+    }
+
+    /// The layout through every layer; an error when one of them is broken (the bar then
+    /// keeps the layout it has).
+    pub fn load_layered(layers: &nyx_config::Layers) -> Result<Config, String> {
+        let mut table: toml::Table = toml::from_str(nyx_plugin::layout::DEFAULT_BAR).expect("the default layout parses");
+        nyx_config::merge(&mut table, layers.merged(DOMAIN.name).map_err(|e| format!("{e:#}"))?);
+        table.remove(nyx_config::SCHEMA_KEY);
+        Config::deserialize(table).map(Config::checked).map_err(|e| format!("{}: {e}", Config::path().display()))
     }
 
     /// The file's layout, or the default when there's no file; an error when it's broken.
@@ -289,5 +302,24 @@ mod tests {
         assert!(!should_hide(&d, &m));
         d.windows.push(win(3, 2));
         assert!(should_hide(&d, &m));
+    }
+
+    #[test]
+    fn nyxos_defaults_come_between_the_built_in_layout_and_the_users() {
+        let d = tempfile::tempdir().unwrap();
+        let layers = nyx_config::Layers { defaults: d.path().join("d"), system: d.path().join("s"), user: d.path().join("u") };
+        for dir in [&layers.defaults, &layers.user] {
+            std::fs::create_dir_all(dir).unwrap();
+        }
+        assert_eq!(Config::load_layered(&layers).unwrap(), Config::default());
+        std::fs::write(layers.defaults.join("bar.toml"), "schema = 1\nheight = 36\n").unwrap();
+        let c = Config::load_layered(&layers).unwrap();
+        assert_eq!(c.height, 36);
+        assert_eq!(c.sections, Config::default().sections, "the built-in sections stay");
+        std::fs::write(layers.user.join("bar.toml"), "height = 28\n").unwrap();
+        assert_eq!(Config::load_layered(&layers).unwrap().height, 28);
+        std::fs::write(layers.user.join("bar.toml"), "height = = 2\n").unwrap();
+        assert!(Config::load_layered(&layers).is_err());
+        assert!(layers.user.join("bar.toml").exists(), "a broken hand edit is left where it is");
     }
 }
