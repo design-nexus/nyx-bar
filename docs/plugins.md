@@ -200,10 +200,10 @@ is held, and puts back after).
 
 | `node` | Fields |
 | --- | --- |
-| `box` | `orientation` (`horizontal`, `vertical`), `spacing`, `align` (`center`, `start`, `end`, `fill`), `children` |
+| `box` | `orientation` (`horizontal`, `vertical`), `spacing`, `align` (`center`, `start`, `end`, `fill`; `center` when unset, so a vertical box needs `fill` to stretch its children across), `children` |
 | `overlay` | `children` (the first at the bottom) |
 | `stack` | `show` (a child's id), `transition` (`crossfade`, `slide_up`, …), `children` |
-| `label` | `text`, `markup` (Pango: `<b>`, `<span size="small">`, …) |
+| `label` | `text`, `markup` (`true`: `text` is Pango markup, `<b>`, `<span size="small">`, …) |
 | `icon` | `name` (an icon-theme name, or a file), `size` |
 | `image` | `path` or `data` (base64 PNG/JPEG), `radius` |
 | `badge` | `text` |
@@ -218,7 +218,7 @@ is held, and puts back after).
 | `button` | `label`, `icon`, `action` |
 | `entry` | `text`, `placeholder` |
 | `separator` | |
-| `scroll` | `max_height`, `child` |
+| `scroll` | `max_height`, `child` (not inside another scroll: popovers already scroll, and a scroll in a scroll gets almost no height) |
 
 Colours are theme tokens: `bg`, `surface`, `text`, `dim_text`, `accent`, `on_accent`,
 `border`, `muted`, `highlight`, `danger`, `panel`, `card`, `raised`, `popover`,
@@ -228,6 +228,14 @@ every theme.
 
 Classes the bar styles: `accent`, `success`, `warning`, `danger`, `dim`, `active`,
 `urgent`.
+
+Fields a node doesn't have are ignored without a warning, so check a view by looking at
+it.
+
+In popovers, labels wrap and end in "…" when they don't fit. A short label beside a row
+or label with a lot of text (one that `expand`s) can be squeezed down to its longest
+word and cut off, and `width` doesn't stop that: keep its words together with
+non-breaking spaces (U+00A0), or keep the long text shorter.
 
 Inline sizes are capped at the bar's height. Images and files can only come from the
 plugin's folder (`/plugin/…`) or its data folder (`/storage/…`) for third-party
@@ -267,7 +275,8 @@ librsvg instead.
 
 ### Plugin CSS
 
-A `style.css` in the folder styles the plugin's own widgets: every selector gets
+A `style.css` in the folder styles the plugin's own widgets (`&` or `:root` is a view's
+root, `&.wide` the root with a class): every selector gets
 `.plugin-<id>` in front (dots become underscores), `@keyframes` are renamed for the
 plugin, other at-rules and `url()` are dropped. Theme colours are available as
 `@theme_accent`, `@theme_card`, `@row_hover` and the rest. Animations pause while the
