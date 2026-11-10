@@ -25,7 +25,7 @@ gtk = { version = "0.11", package = "gtk4", features = ["v4_18"] }
 gtk4-layer-shell = "0.8"
 libc = "0.2"
 nyx-config = { git = "https://github.com/nyxos-project/nyx-system.git", rev = "2c051e628af5582516ece1a8790882328194c26b", features = ["watch"] }
-nyx-desktop = { git = "https://github.com/design-nexus/nyx-core.git", rev = "4378e243aeb09733843996663cd9a5a7f0cbb821", default-features = false }
+nyx-desktop = { git = "https://github.com/design-nexus/nyx-core.git", rev = "04c93f7670075f5b4cf8150fcafe3f485b6dc693", default-features = false }
 # The plugin system: nyx-core, and its GTK drawing in nyx-design.
 nyx-plugin = { git = "https://github.com/design-nexus/nyx-core.git", rev = "4378e243aeb09733843996663cd9a5a7f0cbb821" }
 nyx-plugin-host = { git = "https://github.com/design-nexus/nyx-core.git", rev = "4378e243aeb09733843996663cd9a5a7f0cbb821" }
