@@ -1,7 +1,7 @@
 //! Nyx Bar workspaces: one item per monitor, a button per workspace. The active one is
 //! marked, busy ones are bright, urgent ones are red. Click goes there; scrolling over
-//! the item moves to the next or previous workspace on that monitor. A virtual monitor
-//! (one region of a split screen) shows its own workspaces, numbered 1 to 10.
+//! the item moves to the next or previous workspace on that monitor. A monitor with
+//! workspaces of its own (Omarchy's second screen, a virtual monitor) shows those, 1 to 10.
 
 use nyx_desktop::hypr::Instance;
 use nyx_desktop::watch::{Update, watch};
@@ -25,22 +25,20 @@ fn go(target: &str) {
     dispatch(&format!("hl.dsp.focus({{ workspace = \"{target}\" }})"), &format!("workspace {target}"));
 }
 
-/// A virtual monitor's own workspaces are `base + n`, named `n` (Nyx's Hyprland with
-/// `hl.virtual_monitor`); 0 for every other monitor, whose workspaces are 1 to 10.
+/// Workspace `n` of a monitor is `base + n`: 0 where all monitors share 1 to 10, a
+/// block of its own under Omarchy (a second screen's are 11 to 20) or on a virtual
+/// monitor (a region's 201 to 210).
 fn base_of(d: &Desktop, monitor: &str) -> i64 {
-    d.workspaces
-        .iter()
-        .find(|w| w.monitor == monitor && w.id > 100 && USER_WORKSPACES.contains(&(w.id % 100)) && w.name == (w.id % 100).to_string())
-        .map_or(0, |w| w.id - w.id % 100)
+    d.workspace_base(monitor)
 }
 
-/// Workspace numbers (1 to 10) with windows. A virtual monitor counts its own; the
-/// others share 1 to 10, so a busy workspace shows on every monitor's item.
+/// Workspace numbers (1 to 10) with windows. A monitor with workspaces of its own counts
+/// those; where all monitors share 1 to 10, a busy one shows on every monitor's item.
 fn busy_numbers(d: &Desktop, monitor: &str, base: i64) -> Vec<i64> {
-    let user = |id: i64| USER_WORKSPACES.contains(&(id - base));
+    let own = d.own_workspaces(monitor);
     d.workspaces
         .iter()
-        .filter(|w| w.windows > 0 && user(w.id) && (base == 0 || w.monitor == monitor))
+        .filter(|w| w.windows > 0 && USER_WORKSPACES.contains(&(w.id - base)) && (!own || w.monitor == monitor))
         .map(|w| w.id - base)
         .collect()
 }
@@ -136,15 +134,21 @@ mod tests {
     }
 
     #[test]
-    fn regions_show_their_own_workspaces() {
-        let d = Desktop {
-            workspaces: vec![ws(1, "1", "eDP-1", 1), ws(3, "3", "DP-3.v1", 2), ws(201, "1", "DP-3.v2", 0), ws(204, "4", "DP-3.v2", 1), ws(250, "250", "eDP-1", 1)],
+    fn regions_and_omarchy_screens_show_their_own_workspaces() {
+        let mut d = Desktop {
+            workspaces: vec![ws(1, "1", "eDP-1", 1), ws(3, "3", "DP-3.v1", 2), ws(201, "1", "DP-3.v2", 0), ws(204, "4", "DP-3.v2", 1)],
             ..Default::default()
         };
+        d.regions.insert("DP-3.v2".into(), nyx_desktop::VirtualRegion { host: "DP-3".into(), index: 2, count: 2, workspace_base: 200, ..Default::default() });
         assert_eq!(base_of(&d, "DP-3.v2"), 200);
         assert_eq!(base_of(&d, "DP-3.v1"), 0);
-        assert_eq!(base_of(&d, "eDP-1"), 0, "a workspace that merely has a high id doesn't make a region");
         assert_eq!(busy_numbers(&d, "DP-3.v2", 200), vec![4]);
         assert_eq!(busy_numbers(&d, "eDP-1", 0), vec![1, 3], "ordinary monitors share 1 to 10 as before");
+
+        let mut o = Desktop { workspaces: vec![ws(1, "1", "eDP-1", 1), ws(13, "13", "DP-1", 1)], ..Default::default() };
+        o.numbering.omarchy_blocks = Some(nyx_desktop::model::Numbering::parse_omarchy("0\teDP-1\tLaptop\n1\tDP-1\tScreen\n"));
+        assert_eq!(base_of(&o, "DP-1"), 10);
+        assert_eq!(busy_numbers(&o, "DP-1", 10), vec![3]);
+        assert_eq!(busy_numbers(&o, "eDP-1", 0), vec![1], "each Omarchy screen counts its own");
     }
 }
