@@ -239,12 +239,18 @@ pub fn arrange(sections: &[Vec<Entry>; 3], shown: &[Shown]) -> [Vec<Slot>; 3] {
             }
         }
     }
+    // What the layout doesn't place goes to its plugin's section on the side nearer the
+    // middle: the default items keep the screen's edges (the right section's extras go
+    // before them, the left's after).
+    let mut extra_right = vec![];
     for (i, s) in shown.iter().enumerate() {
         if !placed[i] {
             let si = SECTIONS.iter().position(|x| *x == s.section).unwrap_or(2);
-            out[si].push(Slot::Item((s.plugin.clone(), s.item.clone())));
+            let slot = Slot::Item((s.plugin.clone(), s.item.clone()));
+            if si == 2 { extra_right.push(slot) } else { out[si].push(slot) }
         }
     }
+    out[2].splice(0..0, extra_right);
     for slots in out.iter_mut() {
         let mut tidy: Vec<Slot> = vec![];
         for slot in slots.drain(..) {
@@ -384,7 +390,7 @@ mod tests {
         let [l, c, r] = arrange(&sections, &items);
         assert_eq!(names(&l), vec!["ws/workspaces", "acme.ping/ping"]);
         assert!(c.is_empty());
-        assert_eq!(names(&r), vec!["sys/volume", "clock/time", "sys/network", "tray/tray-1"]);
+        assert_eq!(names(&r), vec!["tray/tray-1", "sys/volume", "clock/time", "sys/network"], "what isn't placed goes before the placed items");
     }
 
     #[test]
