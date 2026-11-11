@@ -1,0 +1,32 @@
+/* Plugin CSS is scoped to this plugin's items and popover (mockups/bar, the stats
+ * popover). */
+.card.scard,
+.scard {
+  padding: 9px 10px;
+  border-radius: 11px;
+  background-color: alpha(@theme_text, 0.045);
+}
+
+.card.scard.cpu {
+  padding: 10px 12px;
+}
+
+.sbig {
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.4px;
+}
+
+.srow { font-size: 12px; }
+
+levelbar.rail {
+  min-height: 4px;
+}
+
+.proc {
+  padding: 5px 6px;
+  border-radius: 9px;
+}
+
+.proc:hover { background-color: alpha(@theme_text, 0.05); }
+.pc { font-size: 12.5px; }

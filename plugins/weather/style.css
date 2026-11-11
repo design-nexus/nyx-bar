@@ -1,0 +1,28 @@
+/* Plugin CSS is scoped to this plugin's items and popover (mockups/bar, the weather
+ * popover). */
+.wchip {
+  min-height: 24px;
+  padding: 0 9px;
+  border-radius: 12px;
+  font-size: 12px;
+  color: @theme_dim_text;
+  background-color: alpha(@theme_text, 0.06);
+}
+
+.walert {
+  padding: 8px 10px;
+  border-radius: 10px;
+  background-color: alpha(@theme_warning, 0.14);
+}
+
+/* The next hours: the current one on a faint tile. */
+.hr {
+  padding: 6px 0;
+  border-radius: 9px;
+}
+
+.hr.now { background-color: alpha(@theme_text, 0.06); }
+.rainp { color: @theme_accent; }
+
+.day { padding: 5px 6px; }
+.day .dn { font-weight: 500; }

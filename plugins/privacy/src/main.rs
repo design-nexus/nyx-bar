@@ -158,34 +158,65 @@ fn sentence(u: &Use) -> String {
     }
 }
 
-fn popover(uses: &[Use], since: &HashMap<Use, String>, mic_muted: bool) -> Node {
-    let mut rows = vec![
-        hbox([icon_sized("security-high-symbolic", 16).class("accent"), label("In use now").class("strong").expand()]).spacing(8),
-    ];
-    for u in uses {
-        let ic = match u.kind {
-            Kind::Mic => "audio-input-microphone-symbolic",
-            Kind::Camera => "camera-web-symbolic",
-            Kind::Screen => "video-display-symbolic",
+fn kind_icon(k: Kind) -> &'static str {
+    match k {
+        Kind::Mic => "audio-input-microphone-symbolic",
+        Kind::Camera => "camera-web-symbolic|camera-video-symbolic",
+        Kind::Screen => "video-display-symbolic",
+    }
+}
+
+fn past_sentence(u: &Use) -> String {
+    match u.kind {
+        Kind::Mic => format!("{} used the microphone", u.app),
+        Kind::Camera => format!("{} used the camera", u.app),
+        Kind::Screen => format!("{} shared your screen", u.app),
+    }
+}
+
+/// A use that ended: when it started and stopped (kept for an hour).
+struct Ended {
+    u: Use,
+    from: String,
+    to: String,
+    at: std::time::Instant,
+}
+
+fn popover(uses: &[Use], since: &HashMap<Use, String>, recent: &[Ended], mic_muted: bool) -> Node {
+    let disc = |k: Option<Kind>| {
+        let class = match k {
+            Some(Kind::Mic) => "mic",
+            Some(Kind::Camera) => "cam",
+            Some(Kind::Screen) => "scr",
+            None => "past",
         };
+        hbox([icon_sized(kind_icon(k.unwrap_or(Kind::Camera)), 16)]).class("pi").class(class)
+    };
+    let mut rows = vec![hbox([icon_sized("security-high-symbolic", 16).class("dim"), label("In use now").class("phead").expand()]).spacing(9).margin(2, 4, 4, 4)];
+    for u in uses {
         let mut row = vec![
-            icon_sized(ic, 16).color(tint(u.kind)),
-            vbox([
-                label(sentence(u)).class("small"),
-                label(since.get(u).map(|t| format!("Since {t}")).unwrap_or_default()).class("tertiary").class("xs"),
-            ])
-            .spacing(1)
-            .expand(),
+            disc(Some(u.kind)),
+            vbox([label(sentence(u)).class("pt"), label(since.get(u).map(|t| format!("Since {t}")).unwrap_or_default()).class("ps")]).spacing(1).expand(),
         ];
         match u.kind {
-            Kind::Mic => row.push(button("mute", Some(if mic_muted { "Unmute" } else { "Mute" }), None)),
-            Kind::Screen if u.node.is_some() => row.push(button(&format!("stop:{}", u.node.unwrap_or(0)), Some("Stop"), None)),
+            Kind::Mic => row.push(button("mute", Some(if mic_muted { "Unmute" } else { "Mute" }), None).class("pbtn")),
+            Kind::Screen if u.node.is_some() => row.push(button(&format!("stop:{}", u.node.unwrap_or(0)), Some("Stop"), None).class("pbtn")),
             _ => {}
         }
-        rows.push(hbox(row).spacing(10).class("card"));
+        rows.push(hbox(row).spacing(10).class("prow"));
     }
-    rows.push(button("settings", Some("Sound settings"), None).class("flat").class("link"));
-    vbox(rows).spacing(8).width(340)
+    if !recent.is_empty() {
+        rows.push(label("RECENTLY").class("caps").margin(6, 4, 0, 6));
+        for e in recent.iter().rev().take(3) {
+            rows.push(
+                hbox([disc(None), vbox([label(past_sentence(&e.u)).class("pt"), label(format!("{} to {}", e.from, e.to)).class("ps")]).spacing(1).expand()])
+                    .spacing(10)
+                    .class("prow"),
+            );
+        }
+    }
+    rows.push(footer("settings", "Sound settings", None));
+    vbox(rows).spacing(2).width(340)
 }
 
 fn mic_muted() -> bool {
@@ -215,17 +246,23 @@ fn main() {
     plugin.item(item(ITEM).hidden(true));
     let mut last: Vec<Use> = vec![];
     let mut since: HashMap<Use, String> = HashMap::new();
+    let mut recent: Vec<Ended> = vec![];
     for input in inputs {
         match input {
             Input::Data(uses) => {
+                let now = chrono::Local::now().format("%H:%M").to_string();
+                for (u, from) in since.iter().filter(|(u, _)| !uses.contains(u)) {
+                    recent.push(Ended { u: u.clone(), from: from.clone(), to: now.clone(), at: std::time::Instant::now() });
+                }
+                recent.retain(|e| e.at.elapsed() < Duration::from_secs(3600));
                 since.retain(|u, _| uses.contains(u));
                 for u in &uses {
-                    since.entry(u.clone()).or_insert_with(|| chrono::Local::now().format("%H:%M").to_string());
+                    since.entry(u.clone()).or_insert_with(|| now.clone());
                 }
                 if uses != last {
                     plugin.item(bar_item(&uses));
                 }
-                plugin.popover(ITEM, (!uses.is_empty()).then(|| popover(&uses, &since, mic_muted())));
+                plugin.popover(ITEM, (!uses.is_empty()).then(|| popover(&uses, &since, &recent, mic_muted())));
                 last = uses;
             }
             Input::Settings(st) => {

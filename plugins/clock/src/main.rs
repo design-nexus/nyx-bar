@@ -9,7 +9,7 @@
 //! files. Ticking a reminder runs `nyx-remindersd --complete`.
 
 use chrono::{DateTime, Datelike, Duration, Local, NaiveDate, TimeZone};
-use nyx_plugin_sdk::protocol::EventKind;
+use nyx_plugin_sdk::protocol::{EventKind, MonitorInfo};
 use nyx_plugin_sdk::view::*;
 use nyx_plugin_sdk::{Input, Plugin, spawn};
 use std::collections::HashSet;
@@ -123,7 +123,7 @@ fn read_tasks(path: &Path, day: NaiveDate) -> Vec<Task> {
     let Some(db) = open_ro(path) else { return vec![] };
     let Ok(mut stmt) = db.prepare(
         "SELECT list, list_name, uid, title, due_day, due_at, overdue FROM tasks \
-         WHERE parent IS NULL AND due_day IS NOT NULL AND due_day <= ?1 ORDER BY overdue DESC, due_day, due_at, title",
+         WHERE parent IS NULL AND due_day IS NOT NULL AND due_day <= ?1 ORDER BY overdue DESC, due_day, due_at IS NULL, due_at, title",
     ) else {
         return vec![];
     };
@@ -198,7 +198,11 @@ struct State {
     done: HashSet<String>,
     /// The reminders the popover shows, in order: `done:<n>` indexes them.
     shown_tasks: Vec<Task>,
+    monitors: Vec<MonitorInfo>,
 }
+
+/// Below this width (logical pixels) the next event's chip shows only the time left.
+const NARROW: i32 = 1440;
 
 fn local(ts: i64) -> DateTime<Local> {
     Local.timestamp_opt(ts, 0).single().unwrap_or_else(Local::now)
@@ -267,6 +271,14 @@ fn centered(mut n: Node) -> Node {
     n
 }
 
+/// A box whose children stretch across it.
+fn filled(mut n: Node) -> Node {
+    if let NodeKind::Box { align, .. } = &mut n.kind {
+        *align = Align::Fill;
+    }
+    n
+}
+
 /// A short label that keeps its words beside an expanding one (popover labels wrap).
 fn keep(text: impl Into<String>, px_per_char: i32) -> Node {
     let t: String = text.into();
@@ -283,6 +295,39 @@ fn bar(paint: &str, h: i32) -> Node {
     vector([0.0, 0.0, 3.0, h as f64], vec![Draw::Rect { x: 0.0, y: 0.0, w: 3.0, h: h as f64, radius: 1.5, fill: Some(color(paint)), stroke: None, width: None }]).size(3, h)
 }
 
+fn square(paint: &str) -> Node {
+    vector([0.0, 0.0, 8.0, 8.0], vec![Draw::Rect { x: 0.0, y: 0.0, w: 8.0, h: 8.0, radius: 2.0, fill: Some(color(paint)), stroke: None, width: None }]).size(8, 8)
+}
+
+/// A 26 px icon button, dim until hovered.
+fn ibtn(action: &str, icon: &str, tip: &str) -> Node {
+    button(action, None, Some(icon)).class("ibtn").tooltip(tip)
+}
+
+/// Open in Calendar: an arrow out of a box (no icon theme has the same one), shown on
+/// the row's hover.
+fn open_button(day: NaiveDate) -> Node {
+    let d = "M14.5 3.5h6v6M10 14 20.5 3.5M18.5 13.5v5a2 2 0 0 1-2 2h-11a2 2 0 0 1-2-2v-11a2 2 0 0 1 2-2h5";
+    let glyph = vector([0.0, 0.0, 24.0, 24.0], vec![Draw::Path { d: d.into(), fill: None, stroke: Some(color("dim_text")), width: Some(1.8) }]).size(15, 15);
+    hbox([glyph]).class("ibox").class("open").action(&format!("open:{day}")).tooltip("Open in Calendar")
+}
+
+/// A reminder's check: a ring (red when overdue), filled with a tick when done.
+fn check(done: bool, late: bool) -> Node {
+    let mut cmds = vec![Draw::Circle {
+        cx: 9.0,
+        cy: 9.0,
+        r: 8.0,
+        fill: done.then(|| color("accent")),
+        stroke: Some(color(if done { "accent" } else if late { "danger" } else { "text_tertiary" })),
+        width: Some(1.6),
+    }];
+    if done {
+        cmds.push(Draw::Path { d: "M5.2 9.3 7.8 11.8 12.8 6.6".into(), fill: None, stroke: Some(color("on_accent")), width: Some(1.9) });
+    }
+    vector([0.0, 0.0, 18.0, 18.0], cmds).size(18, 18)
+}
+
 fn until(mins: i64) -> String {
     match mins {
         ..=0 => "now".into(),
@@ -292,8 +337,9 @@ fn until(mins: i64) -> String {
     }
 }
 
-/// The bar item: the date dim, the time bold, then the next event.
-fn bar_item(st: &State, now: DateTime<Local>) -> Item {
+/// The bar item: the date dim, the time bold, then the next event (on a narrow monitor,
+/// only how long until it).
+fn bar_item(st: &State, now: DateTime<Local>, narrow: bool) -> Item {
     let text = now.format(&st.settings.format).to_string();
     let mut children = match text.rsplit_once("  ") {
         Some((date, time)) => vec![label(date).class("dim"), label(time).class("strong")],
@@ -305,7 +351,11 @@ fn bar_item(st: &State, now: DateTime<Local>) -> Item {
     {
         let mins = (e.starts - now.timestamp()).div_euclid(60).max(0);
         let soon = mins <= 5;
-        let text = if soon && mins > 0 { format!("{} in {}", short(&e.title, 22), until(mins)) } else { format!("{} · {}", short(&e.title, 22), until(mins)) };
+        let text = match (narrow, soon && mins > 0) {
+            (true, _) => until(mins),
+            (false, true) => format!("{} in {}", short(&e.title, 22), until(mins)),
+            (false, false) => format!("{} · {}", short(&e.title, 22), until(mins)),
+        };
         let mut chip = hbox([dot(&e.paint(), 6.0), label(text)]).spacing(5).class("chip");
         if soon {
             chip = chip.class("warning");
@@ -313,19 +363,20 @@ fn bar_item(st: &State, now: DateTime<Local>) -> Item {
         children.push(chip);
         tip.push_str(&format!("\nNext: {} at {}", e.title, local(e.starts).format("%H:%M")));
     }
-    item(ITEM).view(hbox(children).spacing(7)).tooltip(tip).on_right_click(&["nyx-calendar"])
+    item(ITEM).view(hbox(children).spacing(6)).tooltip(tip).on_right_click(&["nyx-calendar"])
 }
 
 fn month_grid(st: &State, today: NaiveDate, cell: (i32, i32)) -> Node {
     let start = grid_start(st.month, st.settings.sunday_first);
     let names: Vec<&str> = if st.settings.sunday_first { vec!["S", "M", "T", "W", "T", "F", "S"] } else { vec!["M", "T", "W", "T", "F", "S", "S"] };
-    let mut rows = vec![hbox(names.into_iter().map(|n| centered(vbox([keep(n, 9).class("caps")])).width(cell.0))).spacing(0)];
+    // Without a width of their own the letters centre over their columns.
+    let mut rows = vec![hbox(names.into_iter().map(|n| centered(vbox([label(n).class("wd")])).width(cell.0))).spacing(0)];
     for w in 0..6 {
         let mut days = vec![];
         for d in 0..7 {
             let day = start + Duration::days(w * 7 + d);
             let events = st.on_day(day);
-            let mut num = label(day.day().to_string()).class("dn");
+            let mut num = label(day.day().to_string()).class("dn").class("center");
             if day.month() != st.month.month() {
                 num = num.class("out");
             }
@@ -348,7 +399,7 @@ fn month_grid(st: &State, today: NaiveDate, cell: (i32, i32)) -> Node {
                 }
             }
             let dots = hbox(colors.iter().map(|c| dot(c, 5.0))).spacing(2).height(5);
-            days.push(centered(vbox([num, centered(dots)])).spacing(1).size(cell.0, cell.1).class("day").action(&format!("day:{day}")).tooltip(&day_tip(day, &events)));
+            days.push(centered(vbox([num, centered(dots)])).spacing(2).size(cell.0, cell.1).class("day").action(&format!("day:{day}")).tooltip(&day_tip(day, &events)));
         }
         rows.push(hbox(days).spacing(0));
     }
@@ -374,43 +425,53 @@ fn agenda(st: &State, day: NaiveDate, now: i64) -> Vec<Node> {
     }
     let today = day == local(now).date_naive();
     let next = events.iter().filter(|e| !e.all_day && e.ends > now).min_by_key(|e| e.starts).map(|e| (e.title.clone(), e.starts));
+    let now_line = || hbox([dot("danger", 7.0), keep(local(now).format("%H:%M").to_string(), 7).class("now-t"), separator().class("now-line").expand()]).spacing(6).margin(1, 8, 1, 8);
     let mut rows = vec![];
     let mut now_shown = !today;
     for e in events {
         if !now_shown && !e.all_day && e.starts > now {
-            rows.push(hbox([label(local(now).format("%H:%M").to_string()).class("danger").class("strong").class("xs"), separator().class("now-line").expand()]).spacing(6).margin(0, 8, 0, 8));
+            rows.push(now_line());
             now_shown = true;
         }
         let time = if e.all_day {
-            vbox([label("All day").class("small").class("strong")]).width(48)
+            vbox([label("All day").class("tm-s")]).width(40)
         } else {
-            vbox([label(local(e.starts).format("%H:%M").to_string()).class("small").class("strong"), label(local(e.ends).format("%H:%M").to_string()).class("xs").class("tertiary")])
-                .spacing(0)
-                .width(48)
+            vbox([label(local(e.starts).format("%H:%M").to_string()).class("tm-s"), label(local(e.ends).format("%H:%M").to_string()).class("tm-e")]).spacing(0).width(40)
         };
-        let sub = if e.location.is_empty() || e.location.starts_with("https://") { e.calendar.clone() } else { format!("{} · {}", e.location, e.calendar) };
-        let mut row = vec![time, bar(&e.paint(), 30), vbox([label(&e.title).class("strong"), label(sub).class("dim").class("small")]).spacing(0).expand()];
+        let sub = if e.location.is_empty() || e.location.starts_with("https://") { e.calendar.clone() } else { format!("{} · {}", e.calendar, e.location) };
+        let mut row = vec![time, bar(&e.paint(), 32), vbox([label(&e.title).class("et"), label(sub).class("es")]).spacing(1).expand()];
         let is_next = next.as_ref().is_some_and(|(t, s)| *t == e.title && *s == e.starts);
         if let Some(link) = e.meeting().filter(|_| e.ends > now) {
             if is_next && e.starts > now && e.starts - now <= 3600 {
-                row.push(label(format!("in {}", until((e.starts - now) / 60))).class("accent").class("xs").class("strong"));
+                row.push(keep(format!("in {}", until((e.starts - now) / 60)), 7).class("soon"));
             }
-            row.push(button(&format!("join:{link}"), Some("Join"), Some("camera-video-symbolic")).class("suggested-action").tooltip("Join the call"));
+            let primary = is_next && today;
+            let ink = if primary { "on_accent" } else { "text" };
+            let camera = vector(
+                [0.0, 0.0, 24.0, 24.0],
+                vec![
+                    Draw::Rect { x: 2.5, y: 6.5, w: 13.0, h: 11.0, radius: 2.5, fill: None, stroke: Some(color(ink)), width: Some(1.8) },
+                    Draw::Path { d: "m15.5 10.5 6-3.5v10l-6-3.5".into(), fill: None, stroke: Some(color(ink)), width: Some(1.8) },
+                ],
+            )
+            .size(14, 14);
+            let join = hbox([camera, label("Join")]).spacing(6).class("join").action(&format!("join:{link}")).tooltip("Join the call");
+            row.push(if primary { join.class("primary") } else { join });
         } else {
-            row.push(button(&format!("open:{}", local(e.starts).date_naive()), None, Some("external-link-symbolic|document-open-symbolic")).tooltip("Open in Calendar"));
+            row.push(open_button(local(e.starts).date_naive()));
         }
-        let mut r = hbox(row).spacing(10).class("ev").margin(0, 0, 0, 0);
+        let mut r = hbox(row).spacing(10).class("ev");
         if e.ends <= now {
             r = r.class("past");
         } else if is_next && today {
-            r = r.class("selected");
+            r = r.class("next");
         }
         rows.push(r);
     }
     if !now_shown && today {
-        rows.push(hbox([label(local(now).format("%H:%M").to_string()).class("danger").class("strong").class("xs"), separator().class("now-line").expand()]).spacing(6).margin(0, 8, 0, 8));
+        rows.push(now_line());
     }
-    rows
+    vec![vbox(rows).spacing(2)]
 }
 
 fn due_text(t: &Task, today: NaiveDate) -> (String, bool) {
@@ -435,19 +496,21 @@ fn reminders(st: &mut State, today: NaiveDate, max: usize) -> (Vec<Node>, usize)
     for (i, t) in st.shown_tasks.iter().enumerate() {
         let done = st.done.contains(&task_key(t));
         let (due, late) = due_text(t, today);
-        let check = button(&format!("done:{i}"), None, Some(if done { "checkbox-checked-symbolic" } else { "radio-symbolic|checkbox-symbolic" }))
-            .class("check")
-            .class(if done { "on" } else if late { "late" } else { "off" })
-            .tooltip(if done { "Done" } else { "Mark as done" });
-        let title = if done { markup(format!("<s>{}</s>", escape(&t.title))).class("tertiary") } else { label(&t.title).class("strong") };
-        let mut due = label(if done { "Done".to_string() } else { due }).class("small");
+        let tick = hbox([check(done, late)]).class("chk").action(&format!("done:{i}")).tooltip(if done { "Done" } else { "Mark as done" });
+        let title = if done { markup(format!("<s>{}</s>", escape(&t.title))).class("tertiary").class("rt") } else { label(&t.title).class("rt") };
+        let mut due = label(if done { "Done".to_string() } else { due }).class("rs");
         due = due.class(if late && !done { "danger" } else { "dim" });
-        rows.push(hbox([check, vbox([title, due]).spacing(0).expand(), label(short(&t.list_name, 14)).width(96).class("list").class("xs")]).spacing(10).class("rem"));
+        let list = short(&t.list_name, 14);
+        let mut row = hbox([tick, vbox([title, due]).spacing(1).expand(), keep(list, 6).class("list")]).spacing(10).class("rem");
+        if late && !done {
+            row = row.class("late");
+        }
+        rows.push(row);
     }
     if st.tasks.is_empty() {
         rows.push(label("Nothing due today").class("dim").margin(6, 8, 6, 8));
     }
-    (rows, more)
+    (vec![vbox(rows).spacing(2)], more)
 }
 
 fn upcoming(st: &State, today: NaiveDate) -> Vec<Node> {
@@ -459,7 +522,7 @@ fn upcoming(st: &State, today: NaiveDate) -> Vec<Node> {
         .map(|e| {
             let day = local(e.starts).format("%a %-d").to_string();
             let when = if e.all_day { "All day".to_string() } else { local(e.starts).format("%H:%M").to_string() };
-            hbox([label(day).class("dim").class("small").width(48), bar(&e.paint(), 16), label(short(&e.title, 28)).expand(), keep(when, 7).class("tertiary").class("small")])
+            hbox([label(day).class("ud").width(44), bar(&e.paint(), 16), label(short(&e.title, 28)).class("ut").expand(), keep(when, 7).class("tertiary").class("ut")])
                 .spacing(9)
                 .class("up")
                 .action(&format!("open:{}", local(e.starts).date_naive()))
@@ -467,23 +530,31 @@ fn upcoming(st: &State, today: NaiveDate) -> Vec<Node> {
         .collect()
 }
 
+/// The calendars shown, in the order they first come, holidays last.
 fn legend(st: &State) -> Node {
     let mut seen: Vec<(String, String)> = vec![];
+    let mut holidays = None;
     for e in &st.events {
-        let name = if e.holiday() { "Holidays".to_string() } else { e.calendar.clone() };
-        if !seen.iter().any(|(n, _)| *n == name) && seen.len() < 4 {
-            seen.push((name, e.paint()));
+        if e.holiday() {
+            holidays.get_or_insert_with(|| e.paint());
+        } else if !seen.iter().any(|(n, _)| *n == e.calendar) {
+            seen.push((e.calendar.clone(), e.paint()));
         }
     }
-    hbox(seen.into_iter().map(|(n, c)| hbox([dot(&c, 8.0), label(short(&n, 14)).class("dim").class("xs")]).spacing(5))).spacing(12)
+    seen.truncate(if holidays.is_some() { 3 } else { 4 });
+    seen.extend(holidays.map(|c| ("Holidays".to_string(), c)));
+    hbox(seen.into_iter().map(|(n, c)| hbox([square(&c), label(short(&n, 14)).class("leg")]).spacing(6))).spacing(14).margin(2, 4, 2, 4)
 }
 
 fn section(title: &str, extra: &str, add: Option<&str>) -> Node {
-    let mut c = vec![keep(title.to_uppercase(), 8).class("caps"), keep(extra, 7).class("tertiary").class("xs"), label("").expand()];
-    if let Some(a) = add {
-        c.push(button(a, None, Some("list-add-symbolic")).tooltip(if a == "new-event" { "New event in Calendar" } else { "New reminder" }));
+    let mut c = vec![keep(title.to_uppercase(), 8).class("caps"), label("").expand()];
+    if !extra.is_empty() {
+        c.push(keep(extra, 7).class("tertiary").class("xs"));
     }
-    hbox(c).spacing(8).margin(6, 2, 0, 4)
+    if let Some(a) = add {
+        c.push(ibtn(a, "list-add-symbolic", if a == "new-event" { "New event in Calendar" } else { "New reminder" }));
+    }
+    hbox(c).spacing(8).class("sh")
 }
 
 fn head(st: &State, today: NaiveDate) -> Node {
@@ -493,15 +564,18 @@ fn head(st: &State, today: NaiveDate) -> Node {
     } else {
         (day.format("%A %-d").to_string(), format!("{} · today is {}", day.format("%B %Y"), today.format("%A %-d")))
     };
-    hbox([
-        vbox([label(title).class("big"), label(sub).class("dim").class("small")]).spacing(0).expand(),
-        button("today", Some("Today"), None).tooltip("Back to today"),
-        button("prev", None, Some("go-previous-symbolic")).tooltip("Previous month"),
-        button("next", None, Some("go-next-symbolic")).tooltip("Next month"),
-        button(&format!("open:{day}"), None, Some("io.github.design_nexus.nyx.Calendar-symbolic|x-office-calendar-symbolic")).tooltip("Open Calendar"),
-        button("open-reminders", None, Some("io.github.design_nexus.nyx.Reminders-symbolic|checkbox-checked-symbolic")).tooltip("Open Reminders"),
-    ])
-    .spacing(4)
+    let mut c = vec![
+        vbox([label(title).class("cal-day"), label(sub).class("cal-date")]).spacing(1).expand(),
+        button("today", Some("Today"), None).class("today-btn").tooltip("Back to today"),
+        ibtn("prev", "pan-start-symbolic", "Previous month"),
+        ibtn("next", "pan-end-symbolic", "Next month"),
+    ];
+    if st.settings.wide {
+        c.push(label("").width(1).class("vsep"));
+        c.push(ibtn(&format!("open:{day}"), "x-office-calendar-symbolic", "Open Calendar").class("cal-app"));
+        c.push(ibtn("open-reminders", "object-select-symbolic", "Open Reminders"));
+    }
+    hbox(c).spacing(6).margin(2, 2, 0, 4)
 }
 
 fn popover(st: &mut State, now: DateTime<Local>) -> Node {
@@ -514,7 +588,7 @@ fn popover(st: &mut State, now: DateTime<Local>) -> Node {
         1 => "1 event".into(),
         n => format!("{n} events"),
     };
-    let month_title = markup(format!("<b>{}</b> <span alpha=\"60%\">{}</span>", st.month.format("%B"), st.month.format("%Y"))).margin(2, 0, 2, 4);
+    let month_title = markup(format!("<b>{}</b> <span alpha=\"60%\">{}</span>", st.month.format("%B"), st.month.format("%Y"))).class("mtitle");
     if st.settings.wide {
         let (rem_rows, more) = reminders(st, today, 5);
         let left_note = if st.tasks.is_empty() { String::new() } else { format!("{} left", st.tasks.iter().filter(|t| !st.done.contains(&task_key(t))).count()) };
@@ -525,13 +599,16 @@ fn popover(st: &mut State, now: DateTime<Local>) -> Node {
         if more > 0 {
             right.push(button("open-reminders", Some(&format!("{more} more in Reminders")), None).class("flat").class("link"));
         }
-        let mut left = vec![month_title, month_grid(st, today, (42, 38)), legend(st)];
+        let mut left = vec![month_title, month_grid(st, today, (43, 38)), legend(st)];
         let up = upcoming(st, today);
         if !up.is_empty() {
-            left.push(section("Upcoming", "", None));
-            left.extend(up);
+            let mut list = vec![section("Upcoming", "", None)];
+            list.extend(up);
+            left.push(vbox(list).spacing(1));
         }
-        vbox([head(st, today), hbox([vbox(left).spacing(6).width(296), vbox(right).spacing(4).expand().width(440).class("card")]).spacing(18)]).spacing(12).class("calendar")
+        // Filled: the card runs as tall as the month column, and the column as the card.
+        let cols = filled(hbox([vbox(left).spacing(6).width(304), vbox(right).spacing(6).expand().width(440).class("card").class("cal-right")]).spacing(20));
+        vbox([head(st, today), cols]).spacing(10).class("calendar")
     } else {
         let (rem_rows, more) = reminders(st, today, 2);
         let mut col = vec![head(st, today), month_grid(st, today, (60, 34)), section(&day_name, &events_note, None)];
@@ -539,7 +616,7 @@ fn popover(st: &mut State, now: DateTime<Local>) -> Node {
         col.push(section("Reminders due today", "", None));
         col.extend(rem_rows);
         let more_text = if more > 0 { format!("{more} more in Reminders") } else { "Open Reminders".into() };
-        col.push(hbox([button(&format!("open:{}", st.selected), Some("Open Calendar"), None).class("flat").class("link"), label("").expand(), button("open-reminders", Some(&more_text), None).class("flat").class("link")]));
+        col.push(footer(&format!("open:{}", st.selected), "Open Calendar", Some(button("open-reminders", Some(&more_text), None).class("flat").class("link"))));
         vbox(col).spacing(4).class("calendar")
     }
 }
@@ -550,7 +627,9 @@ fn mtime(p: &Path) -> Option<SystemTime> {
 
 fn redraw(plugin: &Plugin<Tick>, st: &mut State) {
     let now = Local::now();
-    plugin.item(bar_item(st, now));
+    for m in &st.monitors {
+        plugin.item(bar_item(st, now, m.width < NARROW).monitor(&m.name));
+    }
     let view = popover(st, now);
     plugin.popover(ITEM, Some(view));
 }
@@ -559,7 +638,16 @@ fn main() {
     let (plugin, inputs) = Plugin::<Tick>::start();
     let settings = Settings::from(plugin.settings());
     let today = Local::now().date_naive();
-    let mut st = State { settings, month: first_of(today), selected: today, events: vec![], tasks: vec![], done: HashSet::new(), shown_tasks: vec![] };
+    let mut st = State {
+        settings,
+        month: first_of(today),
+        selected: today,
+        events: vec![],
+        tasks: vec![],
+        done: HashSet::new(),
+        shown_tasks: vec![],
+        monitors: plugin.hello.monitors.clone(),
+    };
     st.load();
     redraw(&plugin, &mut st);
 
@@ -597,6 +685,10 @@ fn main() {
             }
             Input::Data(Tick::Files) => {
                 st.load();
+                redraw(&plugin, &mut st);
+            }
+            Input::Monitors(m) => {
+                st.monitors = m;
                 redraw(&plugin, &mut st);
             }
             Input::Settings(s) => {

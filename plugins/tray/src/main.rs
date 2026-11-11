@@ -192,8 +192,8 @@ fn menu_entry(conn_bus: &str, menu_path: &str, v: &Value) -> Option<MenuEntry> {
         icon: get("icon-name").filter(|i| !i.is_empty()),
         checked,
         enabled: flag("enabled").unwrap_or(true),
-        separator: false,
         children,
+        ..Default::default()
     })
 }
 

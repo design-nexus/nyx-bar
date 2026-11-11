@@ -67,25 +67,27 @@ fn bar_item(u: &[Update]) -> Item {
 
 fn popover(u: &[Update]) -> Node {
     let n = u.len();
+    let count = if n == 1 { "1 update".to_string() } else { format!("{n} updates") };
     let mut rows = vec![
         hbox([
-            icon_sized("software-update-available-symbolic|package-x-generic-symbolic", 16).class("accent"),
-            label(if n == 1 { "1 update".to_string() } else { format!("{n} updates") }).class("strong").expand(),
-            button("refresh", None, Some("view-refresh-symbolic")).tooltip("Check again"),
+            icon_sized("software-update-available-symbolic|package-x-generic-symbolic", 16).class("dim"),
+            label(count.clone()).class("uhead").expand(),
+            button("refresh", None, Some("view-refresh-symbolic")).class("ibtn").tooltip("Check again"),
         ])
-        .spacing(8),
+        .spacing(9)
+        .margin(2, 4, 4, 4),
     ];
     let list: Vec<Node> = u
         .iter()
         .take(SHOWN)
-        .map(|p| hbox([label(p.name.clone()).class("small").expand(), label(format!("{} → {}", p.old, p.new)).class("tertiary").class("xs")]).spacing(10))
+        .map(|p| hbox([label(p.name.clone()).expand(), label(format!("{} → {}", p.old, p.new)).class("tertiary").class("small")]).spacing(10).class("urow"))
         .collect();
-    rows.push(vbox(list).spacing(5).class("card"));
+    rows.push(vbox(list).spacing(0));
     if n > SHOWN {
-        rows.push(label(format!("and {} more", n - SHOWN)).class("tertiary").class("small"));
+        rows.push(label(format!("and {} more", n - SHOWN)).class("tertiary").class("small").margin(2, 6, 0, 6));
     }
-    rows.push(button("update", Some("Update now"), None).class("suggested-action"));
-    vbox(rows).spacing(8).width(340)
+    rows.push(footer("update", "Update now", Some(label(count).class("tertiary").class("xs"))));
+    vbox(rows).spacing(2).width(340)
 }
 
 fn main() {

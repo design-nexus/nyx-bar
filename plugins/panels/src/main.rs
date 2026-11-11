@@ -88,18 +88,22 @@ fn set_dnd(conn: Option<&Connection>, on: bool) {
 }
 
 fn menu(p: &Plugin<Data>, dnd_on: bool, unread: u64) {
+    let with_icon = |mut e: MenuEntry, icon: &str| {
+        e.icon = Some(icon.into());
+        e
+    };
     let mut entries = vec![];
     if dnd_on {
-        entries.push(menu_entry("dnd:off", "Turn off Do not disturb"));
+        entries.push(with_icon(menu_entry("dnd:off", "Turn off Do not disturb"), "preferences-system-notifications-symbolic|notifications-symbolic"));
     }
-    let mut dnd_menu = menu_entry("dnd", "Do not disturb");
+    let mut dnd_menu = with_icon(menu_entry("dnd", "Do not disturb"), "weather-clear-night-symbolic");
     dnd_menu.children = vec![menu_entry("dnd:1h", "For 1 hour"), menu_entry("dnd:morning", "Until tomorrow morning"), menu_entry("dnd:on", "Until I turn it off")];
     entries.push(dnd_menu);
     entries.push(MenuEntry { separator: true, ..Default::default() });
-    let mut clear = menu_entry("clear", &if unread > 0 { format!("Clear {unread} notifications") } else { "Clear notifications".into() });
+    let mut clear = with_icon(menu_entry("clear", &if unread > 0 { format!("Clear {unread} notifications") } else { "Clear notifications".into() }), "window-close-symbolic");
     clear.enabled = unread > 0;
     entries.push(clear);
-    entries.push(menu_entry("settings", "Notification settings"));
+    entries.push(with_icon(menu_entry("settings", "Notification settings"), "emblem-system-symbolic|preferences-system-symbolic"));
     p.menu("notifications", entries);
 }
 

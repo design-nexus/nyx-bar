@@ -49,7 +49,7 @@ fn bar_item(w: &Value, look: &str) -> Item {
 }
 
 fn chip(icon_name: &str, text: String) -> Node {
-    hbox([icon_sized(icon_name, 12), label(text).class("small")]).spacing(5).class("chip")
+    hbox([icon_sized(icon_name, 12), label(text)]).spacing(5).class("wchip")
 }
 
 fn popover(w: &Value) -> Node {
@@ -68,7 +68,13 @@ fn popover(w: &Value) -> Node {
         .spacing(14),
     );
     if let Some(a) = w.get("alert").and_then(|a| a.as_str()) {
-        rows.push(hbox([icon("dialog-warning-symbolic").class("warning"), label(a).class("small").expand()]).spacing(10).class("card").class("alert"));
+        // "Severe thunderstorm watch: 18:00 to 23:00 · National Weather Service"
+        let (title, more) = a.split_once(": ").unwrap_or((a, ""));
+        let mut text = vec![label(title).class("strong")];
+        if !more.is_empty() {
+            text.push(label(more).class("dim").class("small"));
+        }
+        rows.push(hbox([icon("dialog-warning-symbolic").class("warning"), vbox(text).spacing(1).expand()]).spacing(10).class("walert"));
     }
     if let Some(r) = w.get("rain").and_then(|r| r.as_str()) {
         rows.push(hbox([icon("weather-showers-symbolic").class("accent"), label(r).class("small").expand()]).spacing(10).class("card"));
@@ -86,22 +92,28 @@ fn popover(w: &Value) -> Node {
     rows.push(hbox(chips).spacing(6));
     if let Some(hours) = w.get("hours").and_then(|h| h.as_array()).filter(|h| !h.is_empty()) {
         rows.push(label("NEXT HOURS").class("caps").margin(6, 0, 0, 2));
+        let rain_of = |h: &Value| h.get("precipitation").and_then(|p| p.as_i64()).unwrap_or(0);
+        // The chance of rain gets a row only when some hour has one.
+        let any_rain = hours.iter().take(8).any(|h| rain_of(h) >= 10);
         let cols: Vec<Node> = hours
             .iter()
             .take(8)
-            .map(|h| {
-                let rain = h.get("precipitation").and_then(|p| p.as_i64()).unwrap_or(0);
-                centered(vbox([
+            .enumerate()
+            .map(|(i, h)| {
+                let rain = rain_of(h);
+                let mut col = vec![
                     label(s(h, "time")).class("tertiary").class("xs"),
                     icon_sized(s(h, "icon"), 20).class("dim"),
-                    label(s(h, "temperature")).class("strong").class("small"),
-                    label(if rain >= 10 { format!("{rain}%") } else { String::new() }).class("accent").class("xs"),
-                ]))
-                .spacing(5)
-                .width(44)
+                    label(s(h, "temperature")).class("strong"),
+                ];
+                if any_rain {
+                    col.push(label(if rain >= 10 { format!("{rain}%") } else { String::new() }).class("rainp").class("xs"));
+                }
+                let c = centered(vbox(col)).spacing(6).width(44).class("hr");
+                if i == 0 { c.class("now") } else { c }
             })
             .collect();
-        rows.push(hbox(cols).spacing(2));
+        rows.push(hbox(cols).spacing(3));
     }
     if let Some(days) = w.get("days").and_then(|d| d.as_array()).filter(|d| !d.is_empty()) {
         rows.push(label("5 DAYS").class("caps").margin(6, 0, 0, 2));
@@ -109,29 +121,35 @@ fn popover(w: &Value) -> Node {
         let lo = days.iter().map(|d| num(d, "low_c")).fold(f64::MAX, f64::min);
         let hi = days.iter().map(|d| num(d, "high_c")).fold(f64::MIN, f64::max);
         let span = (hi - lo).max(1.0);
+        const W: f64 = 176.0;
+        let mut list = vec![];
         for d in days {
-            let (a, b) = ((num(d, "low_c") - lo) / span * 120.0, (num(d, "high_c") - lo) / span * 120.0);
+            let (a, b) = ((num(d, "low_c") - lo) / span * W, (num(d, "high_c") - lo) / span * W);
+            let b = b.max(a + 6.0);
+            let warm = Paint::Linear { linear: Linear { x1: a, y1: 0.0, x2: b, y2: 0.0, stops: vec![(0.0, "#3fb6ad".into()), (1.0, "warning".into())] } };
             let range = vector(
-                [0.0, 0.0, 120.0, 6.0],
+                [0.0, 0.0, W, 5.0],
                 vec![
-                    Draw::Rect { x: 0.0, y: 0.0, w: 120.0, h: 6.0, radius: 3.0, fill: Some(color("track")), stroke: None, width: None },
-                    Draw::Rect { x: a, y: 0.0, w: (b - a).max(6.0), h: 6.0, radius: 3.0, fill: Some(color("warning")), stroke: None, width: None },
+                    Draw::Rect { x: 0.0, y: 0.0, w: W, h: 5.0, radius: 2.5, fill: Some(color("track")), stroke: None, width: None },
+                    Draw::Rect { x: a, y: 0.0, w: b - a, h: 5.0, radius: 2.5, fill: Some(warm), stroke: None, width: None },
                 ],
             )
-            .size(120, 6);
-            rows.push(
+            .size(W as i32, 5);
+            list.push(
                 hbox([
-                    label(s(d, "day")).class("strong").width(56),
+                    label(s(d, "day")).class("dn").width(56),
                     icon_sized(s(d, "icon"), 18).class("dim").tooltip(s(d, "condition")),
-                    label(s(d, "low")).class("tertiary").width(36),
+                    label(s(d, "low")).class("tertiary").width(34),
                     centered(vbox([range])).expand(),
-                    label(s(d, "high")).width(36),
+                    label(s(d, "high")).class("hi").width(34),
                 ])
-                .spacing(8),
+                .spacing(8)
+                .class("day"),
             );
         }
+        rows.push(vbox(list).spacing(0));
     }
-    rows.push(button("open", Some("Open Weather"), None).class("flat").class("link"));
+    rows.push(footer("open", "Open Weather", None));
     vbox(rows).spacing(8).width(380)
 }
 

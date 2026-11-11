@@ -126,11 +126,17 @@ fn one(look: Look, n: i64, id: i64, state: &str, wins: &[(String, String)]) -> N
     node.class("ws").class(state).id(&format!("ws-{id}")).action(&id.to_string()).tooltip(&tooltip(n, wins))
 }
 
+/// For screenshots on a virtual monitor whose workspace is outside 1 to 10: the
+/// workspace to draw as the active one (`NYX_BAR_TEST_WORKSPACE`).
+fn test_active() -> Option<i64> {
+    std::env::var("NYX_BAR_TEST_WORKSPACE").ok()?.parse().ok()
+}
+
 fn draw(plugin: &Plugin<Arc<Desktop>>, d: &Desktop, count: i64, look: Look) {
     for m in d.monitors.iter().filter(|m| !m.disabled) {
         let base = base_of(d, &m.name);
         let busy = busy_numbers(d, &m.name, base);
-        let active = m.active_workspace - base;
+        let active = test_active().unwrap_or(m.active_workspace - base);
         let last = busy.iter().copied().chain([count, active.min(*USER_WORKSPACES.end())]).max().unwrap_or(count);
         let mut nodes = vec![];
         for n in 1..=last.min(*USER_WORKSPACES.end()) {

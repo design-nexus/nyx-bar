@@ -84,6 +84,20 @@ fn player_volume(conn: &Connection, bus: &str) -> Option<f64> {
     dbus::prop_num(&dbus::get_all(conn, bus, MPRIS_PATH, PLAYER_IFACE)?, "Volume")
 }
 
+/// What the popover shows beyond the track: the player's volume, shuffle and repeat
+/// (`None`, `Track` or `Playlist`), each when the player has it.
+#[derive(Default)]
+struct Extras {
+    volume: Option<f64>,
+    shuffle: Option<bool>,
+    repeat: Option<String>,
+}
+
+fn extras(conn: &Connection, bus: &str) -> Extras {
+    let Some(p) = dbus::get_all(conn, bus, MPRIS_PATH, PLAYER_IFACE) else { return Extras::default() };
+    Extras { volume: dbus::prop_num(&p, "Volume"), shuffle: dbus::prop_bool(&p, "Shuffle"), repeat: dbus::prop_str(&p, "LoopStatus") }
+}
+
 fn set_volume(conn: &Connection, bus: &str, v: f64) {
     dbus::set(conn, bus, MPRIS_PATH, PLAYER_IFACE, "Volume", zbus::zvariant::Value::F64(v.clamp(0.0, 1.0)));
 }
@@ -114,7 +128,7 @@ fn centered(mut n: Node) -> Node {
     n
 }
 
-fn show(plugin: &Plugin<Option<Player>>, p: &Option<Player>, all: &[Player], volume: Option<f64>, max: usize, have_cc: bool) {
+fn show(plugin: &Plugin<Option<Player>>, p: &Option<Player>, all: &[Player], x: &Extras, max: usize, have_cc: bool) {
     let Some(p) = p else {
         plugin.item(item("media").hidden(true));
         plugin.popover("media", None);
@@ -131,42 +145,52 @@ fn show(plugin: &Plugin<Option<Player>>, p: &Option<Player>, all: &[Player], vol
         let chips: Vec<Node> = all
             .iter()
             .map(|o| {
-                let b = button(&format!("player:{}", o.bus), Some(&o.identity), None).class("chip");
-                if o.bus == p.bus { b.class("selected") } else { b }
+                let b = button(&format!("player:{}", o.bus), Some(&o.identity), None).class("pchip");
+                if o.bus == p.bus { b.class("on") } else { b }
             })
             .collect();
-        rows.push(hbox(chips).spacing(6));
+        rows.push(hbox(chips).spacing(6).margin(0, 2, 4, 2));
     }
-    let mut info = vec![label(&p.title).class("big")];
+    let mut info = vec![label(&p.title).class("mtitle")];
     if !p.artist.is_empty() {
         info.push(label(&p.artist).class("dim"));
     }
     if !p.album.is_empty() {
         info.push(label(&p.album).class("tertiary").class("small"));
     }
-    info.push(label(&p.identity).class("tertiary").class("xs"));
-    rows.push(hbox([cover(p, 96), vbox(info).spacing(2).expand()]).spacing(14));
+    if all.len() <= 1 {
+        info.push(label(&p.identity).class("tertiary").class("xs"));
+    }
+    rows.push(hbox([cover(p, 96), vbox(info).spacing(2).expand()]).spacing(14).margin(2, 4, 0, 4));
     if p.can_seek
         && let (Some(len), Some(pos)) = (p.length, p.position)
         && len > 0
     {
-        rows.push(hbox([label(clock(pos)).class("tertiary").class("xs"), slider("seek", 0.0, len as f64 / 1e6, 1.0, pos as f64 / 1e6, None).expand(), label(clock(len)).class("tertiary").class("xs")]).spacing(8));
+        rows.push(hbox([label(clock(pos)).class("tertiary").class("xs"), slider("seek", 0.0, len as f64 / 1e6, 1.0, pos as f64 / 1e6, None).expand(), label(clock(len)).class("tertiary").class("xs")]).spacing(10).margin(6, 4, 0, 4));
     }
-    rows.push(
-        centered(hbox([
-            button("previous", None, Some("media-skip-backward-symbolic")).class("flat"),
-            button("play", None, Some(play_icon)).class("suggested-action").class("circular"),
-            button("next", None, Some("media-skip-forward-symbolic")).class("flat"),
-        ]))
-        .spacing(18),
-    );
-    if let Some(v) = volume {
-        rows.push(slider("player-volume", 0.0, 100.0, 1.0, (v * 100.0).round(), Some("audio-volume-high-symbolic")).tooltip(&format!("{}'s volume", p.identity)));
+    let mut controls = vec![];
+    if let Some(on) = x.shuffle {
+        controls.push(button("shuffle", None, Some("media-playlist-shuffle-symbolic")).class("mctl").class(if on { "on" } else { "off" }).tooltip(if on { "Shuffle is on" } else { "Shuffle" }));
+    }
+    controls.push(button("previous", None, Some("media-skip-backward-symbolic")).class("mctl"));
+    controls.push(button("play", None, Some(play_icon)).class("playb"));
+    controls.push(button("next", None, Some("media-skip-forward-symbolic")).class("mctl"));
+    if let Some(r) = x.repeat.as_deref() {
+        let (icon, tip) = match r {
+            "Track" => ("media-playlist-repeat-song-symbolic|media-playlist-repeat-symbolic", "Repeating this track"),
+            "Playlist" => ("media-playlist-repeat-symbolic", "Repeating the list"),
+            _ => ("media-playlist-repeat-symbolic", "Repeat"),
+        };
+        controls.push(button("repeat", None, Some(icon)).class("mctl").class(if r == "None" { "off" } else { "on" }).tooltip(tip));
+    }
+    rows.push(centered(hbox(controls)).spacing(22).margin(4, 0, 2, 0));
+    if let Some(v) = x.volume {
+        rows.push(slider("player-volume", 0.0, 100.0, 1.0, (v * 100.0).round(), Some("audio-volume-high-symbolic")).tooltip(&format!("{}'s volume", p.identity)).margin(0, 4, 0, 4));
     }
     if have_cc {
-        rows.push(button("output", Some("Sound output"), Some("audio-speakers-symbolic")).class("flat").tooltip("Choose where sound plays (Control Center)"));
+        rows.push(footer("output", "Sound output", None));
     }
-    plugin.popover("media", Some(vbox(rows).spacing(10).width(340)));
+    plugin.popover("media", Some(vbox(rows).spacing(8).width(340)));
 }
 
 fn player_view(w: &Widget, p: &Player) -> Node {
@@ -259,33 +283,51 @@ fn main() {
     let mut chosen: Option<String> = None;
     let mut current: Option<Player> = None;
     let mut all: Vec<Player> = vec![];
-    let refresh = |watched: &Option<Player>, chosen: &Option<String>, all: &mut Vec<Player>| -> (Option<Player>, Option<f64>) {
+    let refresh = |watched: &Option<Player>, chosen: &Option<String>, all: &mut Vec<Player>| -> (Option<Player>, Extras) {
         *all = conn.as_ref().map(mpris::players).unwrap_or_default();
         all.retain(|p| !p.title.is_empty());
         let shown = chosen.as_ref().and_then(|b| all.iter().find(|p| &p.bus == b).cloned()).or_else(|| watched.clone());
-        let volume = shown.as_ref().and_then(|p| conn.as_ref().and_then(|c| player_volume(c, &p.bus)));
-        (shown, volume)
+        let x = shown.as_ref().and_then(|p| conn.as_ref().map(|c| extras(c, &p.bus))).unwrap_or_default();
+        (shown, x)
     };
     let mut watched: Option<Player> = None;
     for input in inputs {
         match input {
             Input::Data(p) => {
                 watched = p;
-                let (shown, volume) = refresh(&watched, &chosen, &mut all);
-                show(&plugin, &shown, &all, volume, max, have_cc);
+                let (shown, x) = refresh(&watched, &chosen, &mut all);
+                show(&plugin, &shown, &all, &x, max, have_cc);
                 current = shown;
             }
             Input::Settings(s) => {
                 max = s.get("max_chars").and_then(|v| v.as_i64()).unwrap_or(22).clamp(8, 120) as usize;
-                let (shown, volume) = refresh(&watched, &chosen, &mut all);
-                show(&plugin, &shown, &all, volume, max, have_cc);
+                let (shown, x) = refresh(&watched, &chosen, &mut all);
+                show(&plugin, &shown, &all, &x, max, have_cc);
                 current = shown;
             }
             Input::Event(e) => {
                 if let (EventKind::Action, Some(bus)) = (e.kind, e.control.as_deref().and_then(|c| c.strip_prefix("player:"))) {
                     chosen = Some(bus.to_string());
-                    let (shown, volume) = refresh(&watched, &chosen, &mut all);
-                    show(&plugin, &shown, &all, volume, max, have_cc);
+                    let (shown, x) = refresh(&watched, &chosen, &mut all);
+                    show(&plugin, &shown, &all, &x, max, have_cc);
+                    current = shown;
+                    continue;
+                }
+                if let (EventKind::Action, Some(c @ ("shuffle" | "repeat")), Some(p), Some(conn)) = (e.kind, e.control.as_deref(), &current, &conn) {
+                    let now = extras(conn, &p.bus);
+                    let value = if c == "shuffle" {
+                        zbus::zvariant::Value::Bool(!now.shuffle.unwrap_or(false))
+                    } else {
+                        let next = match now.repeat.as_deref() {
+                            Some("Playlist") => "Track",
+                            Some("Track") => "None",
+                            _ => "Playlist",
+                        };
+                        zbus::zvariant::Value::from(next)
+                    };
+                    dbus::set(conn, &p.bus, MPRIS_PATH, PLAYER_IFACE, if c == "shuffle" { "Shuffle" } else { "LoopStatus" }, value);
+                    let (shown, x) = refresh(&watched, &chosen, &mut all);
+                    show(&plugin, &shown, &all, &x, max, have_cc);
                     current = shown;
                     continue;
                 }
@@ -313,8 +355,8 @@ fn main() {
                         }
                     }
                     (EventKind::PopoverOpen, _) => {
-                        let (shown, volume) = refresh(&watched, &chosen, &mut all);
-                        show(&plugin, &shown, &all, volume, max, have_cc);
+                        let (shown, x) = refresh(&watched, &chosen, &mut all);
+                        show(&plugin, &shown, &all, &x, max, have_cc);
                         current = shown;
                     }
                     _ => {}

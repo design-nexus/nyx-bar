@@ -1,0 +1,51 @@
+/* Plugin CSS is scoped to this plugin's items and popover (mockups/bar, the media
+ * popover). */
+button.pchip {
+  min-height: 24px;
+  padding: 0 10px;
+  border-radius: 12px;
+  font-size: 11.5px;
+  font-weight: 500;
+  background-color: alpha(@theme_text, 0.06);
+  box-shadow: none;
+}
+
+button.pchip.on {
+  color: @theme_accent;
+  background-color: alpha(@theme_accent, 0.16);
+}
+
+.mtitle {
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.2px;
+}
+
+button.mctl {
+  min-width: 32px;
+  min-height: 32px;
+  padding: 0;
+  border-radius: 16px;
+  background: none;
+  box-shadow: none;
+  color: @theme_text;
+}
+
+button.mctl image { -gtk-icon-size: 20px; }
+button.mctl:hover { background-color: alpha(@theme_text, 0.08); }
+button.mctl.off { color: @theme_dim_text; }
+button.mctl.on { color: @theme_accent; }
+
+/* Play: a solid disc in the text colour. */
+button.playb {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  border-radius: 22px;
+  background-color: @theme_text;
+  color: @theme_bg;
+  box-shadow: none;
+}
+
+button.playb image { -gtk-icon-size: 20px; }
+button.playb:hover { background-color: alpha(@theme_text, 0.88); }

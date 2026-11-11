@@ -18,6 +18,7 @@ struct Sampler {
     last_cpu: Option<(u64, u64)>,
     temp: Option<PathBuf>,
     gpu: Option<PathBuf>,
+    fan: Option<PathBuf>,
 }
 
 fn read(p: &str) -> String {
@@ -36,6 +37,9 @@ impl Sampler {
                     if better {
                         s.temp = Some(d.path().join("temp1_input"));
                     }
+                }
+                if s.fan.is_none() && d.path().join("fan1_input").exists() {
+                    s.fan = Some(d.path().join("fan1_input"));
                 }
             }
         }
@@ -79,6 +83,11 @@ impl Sampler {
     fn gpu(&self) -> Option<f64> {
         read(self.gpu.as_ref()?.to_str()?).trim().parse().ok()
     }
+
+    /// The first fan's speed, while it turns.
+    fn fan(&self) -> Option<u64> {
+        read(self.fan.as_ref()?.to_str()?).trim().parse().ok().filter(|r| *r > 0)
+    }
 }
 
 struct History {
@@ -88,7 +97,14 @@ struct History {
     gpu: VecDeque<f64>,
 }
 
+/// The bar's sparkline shows the last this many samples.
+const SPARK: usize = 16;
+
 fn push(q: &mut VecDeque<f64>, v: f64) {
+    // The first reading fills the sparkline, so it starts as a flat line, not a ramp from 0.
+    if q.is_empty() {
+        q.extend(std::iter::repeat_n(v, SPARK - 1));
+    }
     if q.len() == HISTORY {
         q.pop_front();
     }
@@ -196,20 +212,30 @@ fn desktop(plugin: Plugin<()>, inputs: std::sync::mpsc::Receiver<Input<()>>) {
     }
 }
 
-/// The busiest processes since the last look: (name, CPU %, resident bytes).
+/// The busiest apps since the last look: (app, CPU %, resident bytes). Processes count
+/// under the app whose program they run (a browser's many, an app's helpers), else under
+/// their program's name.
 #[derive(Default)]
 struct Procs {
     last: std::collections::HashMap<u32, u64>,
     last_total: u64,
 }
 
+fn app_of(pid: u32, comm: &str) -> nyx_bar_apps::App {
+    let program = std::fs::read_link(format!("/proc/{pid}/exe"))
+        .ok()
+        .and_then(|p| p.file_name().map(|f| f.to_string_lossy().trim_end_matches(" (deleted)").to_string()))
+        .unwrap_or_else(|| comm.to_string());
+    nyx_bar_apps::for_program(&program).unwrap_or_else(|| nyx_bar_apps::lookup(&program))
+}
+
 impl Procs {
-    fn top(&mut self, n: usize) -> Vec<(String, f64, u64)> {
+    fn top(&mut self, n: usize) -> Vec<(nyx_bar_apps::App, f64, u64)> {
         let total: u64 = read("/proc/stat").lines().next().map(|l| l.split_whitespace().skip(1).take(8).filter_map(|v| v.parse::<u64>().ok()).sum()).unwrap_or(0);
         let dt = total.saturating_sub(self.last_total).max(1) as f64;
         let cores = std::thread::available_parallelism().map_or(1, |n| n.get()) as f64;
         let page = 4096u64;
-        let mut by_name: std::collections::HashMap<String, (f64, u64)> = Default::default();
+        let mut by_app: std::collections::HashMap<String, (nyx_bar_apps::App, f64, u64)> = Default::default();
         let mut seen = std::collections::HashMap::new();
         if let Ok(rd) = std::fs::read_dir("/proc") {
             for e in rd.flatten() {
@@ -222,9 +248,13 @@ impl Procs {
                 let rss = f.get(21).and_then(|v| v.parse::<u64>().ok()).unwrap_or(0) * page;
                 let cpu = self.last.get(&pid).map_or(0.0, |p| ticks.saturating_sub(*p) as f64 * 100.0 * cores / dt / cores);
                 seen.insert(pid, ticks);
-                let entry = by_name.entry(name).or_default();
-                entry.0 += cpu;
-                entry.1 += rss;
+                if rss == 0 {
+                    continue;
+                }
+                let app = app_of(pid, &name);
+                let entry = by_app.entry(app.name.clone()).or_insert_with(|| (app, 0.0, 0));
+                entry.1 += cpu;
+                entry.2 += rss;
             }
         }
         let first = self.last.is_empty();
@@ -233,7 +263,7 @@ impl Procs {
         if first {
             return vec![];
         }
-        let mut list: Vec<(String, f64, u64)> = by_name.into_iter().map(|(n, (c, m))| (n, c, m)).collect();
+        let mut list: Vec<(nyx_bar_apps::App, f64, u64)> = by_app.into_values().collect();
         list.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal).then(b.2.cmp(&a.2)));
         list.truncate(n);
         list
@@ -333,6 +363,64 @@ fn glyph(kind: &str, tint: &str) -> Node {
     vector([0.0, 0.0, 24.0, 24.0], cmds).size(16, 16)
 }
 
+/// Each core's load as a row of pills (rows of eight on bigger processors), filled from
+/// the bottom.
+fn cores_view(loads: &[f64], width: i32, tint: &str) -> Node {
+    let per_row = loads.len().clamp(1, 8);
+    let rows = loads.len().div_ceil(per_row);
+    let (gap, h) = (4.0, if rows > 1 { 12.0 } else { 18.0 });
+    let w = (width as f64 - gap * (per_row - 1) as f64) / per_row as f64;
+    let mut cmds = vec![];
+    for (i, load) in loads.iter().enumerate() {
+        let (x, y) = ((i % per_row) as f64 * (w + gap), (i / per_row) as f64 * (h + gap));
+        let f = (load / 100.0).clamp(0.0, 1.0) * h;
+        cmds.push(Draw::Rect { x, y, w, h, radius: 3.0, fill: Some(color("track")), stroke: None, width: None });
+        if f >= 1.0 {
+            cmds.push(Draw::Rect { x, y: y + h - f, w, h: f, radius: 3.0, fill: Some(color(tint)), stroke: None, width: None });
+        }
+    }
+    let total = rows as f64 * h + (rows - 1) as f64 * gap;
+    vector([0.0, 0.0, width as f64, total], cmds).size(width, total as i32).tooltip(&format!("{} cores", loads.len()))
+}
+
+/// 2100 → "2,100".
+fn thousands(n: u64) -> String {
+    let s = n.to_string();
+    let mut out = String::new();
+    for (i, c) in s.chars().enumerate() {
+        if i > 0 && (s.len() - i).is_multiple_of(3) {
+            out.push(',');
+        }
+        out.push(c);
+    }
+    out
+}
+
+/// The GPU's temperature, from its hwmon sensor (amdgpu, i915, xe, nouveau).
+fn temp_gpu() -> Option<f64> {
+    for d in std::fs::read_dir("/sys/class/hwmon").ok()?.flatten() {
+        let name = read(&format!("{}/name", d.path().display()));
+        if matches!(name.trim(), "amdgpu" | "i915" | "xe" | "nouveau") {
+            return read(&format!("{}/temp1_input", d.path().display())).trim().parse::<f64>().ok().map(|m| m / 1000.0);
+        }
+    }
+    None
+}
+
+fn filled(mut n: Node) -> Node {
+    if let NodeKind::Box { align, .. } = &mut n.kind {
+        *align = Align::Fill;
+    }
+    n
+}
+
+/// A short label beside an expanding one keeps its words (popover labels wrap).
+fn keep(text: impl Into<String>, px_per_char: i32) -> Node {
+    let t: String = text.into();
+    let w = t.chars().count() as i32 * px_per_char + 8;
+    label(t).width(w)
+}
+
 /// A small ring: `pct` of it in `tint`.
 fn ring(pct: f64, tint: &str) -> Node {
     let end = -90.0 + 360.0 * (pct / 100.0).clamp(0.0, 1.0);
@@ -425,7 +513,10 @@ fn main() {
                 match look {
                     Look::Spark => {
                         parts.push(glyph("cpu", if busy { "warning" } else { "dim_text" }));
-                        parts.push(graph(values(&h.cpu).into_iter().rev().take(16).rev().collect(), Some(100.0)).size(34, 14).color(tint));
+                        let recent: Vec<f64> = values(&h.cpu).into_iter().rev().take(SPARK).rev().collect();
+                        // Twice the recent peak (at least 25 %), so a quiet line still has a shape.
+                        let top = (recent.iter().cloned().fold(0.0, f64::max) * 2.0).clamp(25.0, 100.0);
+                        parts.push(graph(recent, Some(top)).size(34, 14).color(tint));
                         let mut l = label(format!("{cpu:.0}%"));
                         if busy {
                             l = l.class("warning");
@@ -459,7 +550,7 @@ fn main() {
                     it = it.on_right_click(&["nyx-activity", "--toggle"]);
                 }
                 plugin.item(it);
-                if popover_open || h.cpu.len() <= 1 {
+                if popover_open || h.cpu.len() <= SPARK {
                     let top = procs.top(4);
                     let total_gb = read("/proc/meminfo").lines().find_map(|l| l.strip_prefix("MemTotal:")).and_then(|v| v.split_whitespace().next()?.parse::<f64>().ok()).map_or(0.0, |kb| kb / 1024.0 / 1024.0);
                     let mut caption = format!("{} cores", per_core.len().max(1));
@@ -469,45 +560,51 @@ fn main() {
                     if let Some(t) = temp {
                         caption.push_str(&format!(" · {t:.0} °C"));
                     }
+                    if let Some(f) = s.fan() {
+                        caption.push_str(&format!(" · fan {} rpm", thousands(f)));
+                    }
                     let mut cpu_card = vec![
-                        hbox([glyph("cpu", "text"), label("CPU").class("strong"), label("").expand(), label(format!("{cpu:.0}%")).class("big").class(if busy { "warning" } else { "plain" })]).spacing(8),
-                        graph(values(&h.cpu), Some(100.0)).size(352, 54).color(tint),
+                        hbox([glyph("cpu", "dim_text"), label("CPU").class("strong"), label("").expand(), label(format!("{cpu:.0}%")).class("sbig").class(if busy { "warning" } else { "plain" })]).spacing(8),
+                        graph(values(&h.cpu), Some(100.0)).size(332, 44).color(tint),
                     ];
                     if !per_core.is_empty() {
-                        cpu_card.push(bars(per_core.clone(), Some(100.0)).size(352, 18).color(tint));
+                        cpu_card.push(cores_view(&per_core, 332, tint));
                     }
                     cpu_card.push(label(caption).class("tertiary").class("xs"));
-                    let small = |pic: Node, title: &str, value: String, frac: Option<f64>, extra: Option<Node>| {
-                        let mut col = vec![hbox([label(title).class("strong").class("small"), label("").expand(), label(value).class("small")]).spacing(6)];
-                        if let Some(f) = frac {
-                            col.push(progress(f));
-                        }
-                        col.extend(extra);
-                        hbox([pic, vbox(col).spacing(4).expand()]).spacing(10).class("card").width(170)
+                    let small = |pic: Node, title: &str, value: String, below: Node| {
+                        let head = hbox([label(title).class("strong"), label("").expand(), label(value)]).spacing(6).class("srow");
+                        hbox([pic, vbox([head, below]).spacing(7).expand()]).spacing(10).class("scard").width(173)
                     };
-                    let mut grid = vec![small(glyph("memory", "dim_text"), "Memory", format!("{used_gb:.1} / {total_gb:.0} GB"), Some(mem / 100.0), None)];
+                    let rail = |f: f64| progress(f.clamp(0.0, 1.0)).class("rail");
+                    let mut grid = vec![small(glyph("memory", "dim_text"), "Memory", format!("{used_gb:.1} / {total_gb:.0} GB"), rail(mem / 100.0))];
                     if let Some(g) = gpu {
-                        grid.push(small(icon("video-display-symbolic").class("dim"), "GPU", format!("{g:.0}%"), Some(g / 100.0), None));
+                        let v = match temp_gpu() {
+                            Some(t) => format!("{g:.0}% · {t:.0}°"),
+                            None => format!("{g:.0}%"),
+                        };
+                        grid.push(small(icon("video-display-symbolic").class("dim"), "GPU", v, rail(g / 100.0)));
+                    } else if let Some(t) = temp {
+                        grid.push(small(glyph("temp", if hot { "danger" } else { "dim_text" }), "Heat", format!("{t:.0} °C"), rail(t / 100.0)));
                     }
                     if let Some((free, total)) = disk() {
-                        grid.push(small(icon("drive-harddisk-symbolic").class("dim"), "Disk", format!("{} free", size(free)), Some(1.0 - free as f64 / total.max(1) as f64), None));
+                        grid.push(small(icon("drive-harddisk-symbolic").class("dim"), "Disk", format!("{} free", size(free)), rail(1.0 - free as f64 / total.max(1) as f64)));
                     }
-                    grid.push(small(icon("network-transmit-receive-symbolic|network-wired-symbolic").class("dim"), "Network", rate(down), None, Some(graph(net_hist.iter().copied().collect(), None).size(140, 12).color("highlight").tooltip(&format!("Down {} · up {}", rate(down), rate(up))))));
-                    let mut rows = vec![card(cpu_card)];
-                    for pair in grid.chunks(2) {
-                        rows.push(hbox(pair.to_vec()).spacing(6));
-                    }
+                    let spark = graph(net_hist.iter().copied().collect(), None).size(120, 12).color("accent").tooltip(&format!("Down {} · up {}", rate(down), rate(up)));
+                    grid.push(small(icon("network-transmit-receive-symbolic|network-wired-symbolic").class("dim"), "Network", rate(down), spark));
+                    let mut rows = vec![card(cpu_card).class("scard").class("cpu")];
+                    let cells: Vec<Node> = grid.chunks(2).map(|pair| filled(hbox(pair.to_vec()).spacing(6))).collect();
+                    rows.push(vbox(cells).spacing(6));
                     if !top.is_empty() {
-                        rows.push(hbox([label("TOP PROCESSES").class("caps").width(120), label("").expand(), label("CPU").class("caps").width(40)]).margin(6, 4, 0, 4));
-                        for (name, c, m) in top {
-                            let app = nyx_bar_apps::lookup(&name);
-                            rows.push(hbox([icon_sized(&app.icons(), 18), label(&app.name).expand(), label(size(m)).class("tertiary").class("xs").width(60), label(format!("{c:.1}%")).class("small").width(48)]).spacing(10).margin(0, 4, 0, 4));
+                        let mut list = vec![hbox([label("TOP PROCESSES").class("caps").width(120), label("").expand(), keep("CPU", 8).class("caps")]).margin(6, 6, 2, 6)];
+                        for (app, c, m) in top {
+                            list.push(hbox([icon_sized(&app.icons(), 20), label(&app.name).expand(), keep(size(m), 7).class("tertiary").class("small"), label(format!("{c:.1}%")).class("pc").width(44)]).spacing(10).class("proc"));
                         }
+                        rows.push(vbox(list).spacing(0));
                     }
                     if activity {
-                        rows.push(button("activity", Some("Open Activity"), Some("go-next-symbolic")).class("flat"));
+                        rows.push(footer("activity", "Open Activity", Some(label(format!("Updates every {every} s")).class("tertiary").class("xs"))));
                     }
-                    plugin.popover("stats", Some(vbox(rows).spacing(8)));
+                    plugin.popover("stats", Some(vbox(rows).spacing(6).width(356)));
                 }
             }
             Input::Visible(v) => visible = v,

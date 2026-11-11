@@ -1,4 +1,17 @@
-/* Plugin CSS is scoped to this plugin's items and popover. */
+/* Plugin CSS is scoped to this plugin's items and popover. Tray icons sit about 9 px
+ * apart (the bar's 6 px spacing and their padding, less the margins), the drawer's
+ * chevron close after them. */
+&.bar-item {
+  padding: 0 3px;
+  margin-left: -2px;
+  margin-right: -2px;
+}
+
+&.item-tray-more {
+  padding: 0 3px;
+  margin-left: -4px;
+}
+
 .cell {
   padding: 10px 2px 8px;
   border-radius: 9px;

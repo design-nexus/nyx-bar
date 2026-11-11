@@ -1,6 +1,7 @@
 //! Nyx Bar window: the focused window's app (its icon and name, from its desktop file)
-//! and title, dimmed. Hidden on an empty workspace.
+//! and title, dimmed; on a narrow monitor, the app alone. Hidden on an empty workspace.
 
+use nyx_plugin_sdk::protocol::MonitorInfo;
 use nyx_plugin_sdk::view::*;
 use nyx_plugin_sdk::{Input, Plugin};
 use serde_json::Value;
@@ -38,7 +39,10 @@ fn bare_title<'a>(title: &'a str, app: &str) -> &'a str {
     title
 }
 
-fn window(class: Option<&str>, title: Option<&str>, look: &Look) -> Item {
+/// Below this width (logical pixels) a monitor's bar shows the app without its title.
+const NARROW: i32 = 1440;
+
+fn window(class: Option<&str>, title: Option<&str>, look: &Look, narrow: bool) -> Item {
     let Some(class) = class.filter(|c| !c.is_empty()) else {
         return item("window").hidden(true);
     };
@@ -46,29 +50,41 @@ fn window(class: Option<&str>, title: Option<&str>, look: &Look) -> Item {
     let title = title.unwrap_or("");
     let mut c = vec![icon_sized(&app.icon, 16), label(app.name.clone()).class("strong")];
     let t = bare_title(title, &app.name);
-    if look.title && !t.is_empty() && t != app.name {
+    if look.title && !narrow && !t.is_empty() && t != app.name {
         c.push(label(short(t, look.max_chars)).class("dim").class("shrink"));
     }
     item("window").view(hbox(c).spacing(8)).tooltip(if title.is_empty() { app.name.clone() } else { title.to_string() })
 }
 
+/// The item on each monitor: the title only where there's room.
+fn show(plugin: &Plugin<()>, monitors: &[MonitorInfo], last: &(Option<String>, Option<String>), look: &Look) {
+    for m in monitors {
+        plugin.item(window(last.0.as_deref(), last.1.as_deref(), look, m.width < NARROW).monitor(&m.name));
+    }
+}
+
 fn main() {
     let (plugin, inputs) = Plugin::<()>::start();
     let mut look = Look::from(plugin.settings());
+    let mut monitors = plugin.hello.monitors.clone();
     let mut last: (Option<String>, Option<String>) = (None, None);
-    plugin.item(item("window").hidden(true));
+    show(&plugin, &monitors, &last, &look);
     for input in inputs {
         match input {
             Input::Desktop(d) => {
                 let now = (d.active_class, d.active_title);
                 if now != last {
-                    plugin.item(window(now.0.as_deref(), now.1.as_deref(), &look));
                     last = now;
+                    show(&plugin, &monitors, &last, &look);
                 }
+            }
+            Input::Monitors(m) => {
+                monitors = m;
+                show(&plugin, &monitors, &last, &look);
             }
             Input::Settings(st) => {
                 look = Look::from(&st);
-                plugin.item(window(last.0.as_deref(), last.1.as_deref(), &look));
+                show(&plugin, &monitors, &last, &look);
             }
             Input::Shutdown => break,
             _ => {}

@@ -115,8 +115,10 @@ Clicks: the `on_*` command, if the item has one; else a left click opens the pop
 if there is one, a right click the menu if there is one; else the plugin gets an
 `event`. Scrolling runs `on_scroll_*` or sends a `scroll` event.
 
-Menu entries: `id`, `label`, `icon?`, `checked?` (a check mark), `enabled`,
-`separator`, `children` (a submenu).
+Menu entries: `id`, `label`, `icon?`, `checked?` (a check mark), `cap?` (a short code
+in a key cap before the label, "EN"), `enabled` (a disabled entry without an `id` is a
+dim line, a hint), `separator`, `children` (a submenu, opened in place under its entry).
+An `icon` can list fallbacks as in views.
 
 `open: true` says the item has something open that isn't its popover (`nyx.system`
 sets it while Control Center shows that item's page). An open item, and the pill its
@@ -208,7 +210,10 @@ event with this as `control`, as a button does; the pointer becomes a hand).
 An `icon` name can list fallbacks, `"a-symbolic|b-symbolic|c"`: the first the icon
 theme has is drawn. In the bar a label keeps its full width unless it has a `width`
 or the class `shrink`; then it ends in "…" when the bar runs out of room (window and
-song titles on a narrow screen).
+song titles on a narrow screen). A popover's labels start at their left; with the class
+`center` the text centres in a label wider than it. A square `image` without a `radius`
+draws at its size, as an icon does; a drawing (`graph`, `vector`) keeps the height it
+asks for in a row.
 
 The bar's style has classes for views: `dim`, `tertiary`, `strong`, `small`, `xs`,
 `big`, `huge`, `caps`, `tnum` (figures of one width), `chip` (with `warning` or

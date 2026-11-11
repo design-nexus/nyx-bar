@@ -28,8 +28,16 @@ impl App {
 struct Entry {
     stem: String,
     wm_class: Option<String>,
+    /// The program `Exec=` runs, by its file name (`firefox`).
+    exec: Option<String>,
     name: String,
     icon: String,
+}
+
+/// The program an `Exec=` line runs: past `env` and its `VAR=value`s, by file name.
+fn exec_program(line: &str) -> Option<String> {
+    let first = line.split_whitespace().find(|w| *w != "env" && !w.contains('='))?;
+    Some(first.rsplit('/').next()?.to_lowercase())
 }
 
 fn data_dirs() -> Vec<PathBuf> {
@@ -40,7 +48,7 @@ fn data_dirs() -> Vec<PathBuf> {
 
 fn parse(path: &Path) -> Option<Entry> {
     let text = std::fs::read_to_string(path).ok()?;
-    let (mut name, mut icon, mut wm_class) = (None, None, None);
+    let (mut name, mut icon, mut wm_class, mut exec) = (None, None, None, None);
     let mut in_entry = false;
     for line in text.lines() {
         let line = line.trim();
@@ -56,11 +64,12 @@ fn parse(path: &Path) -> Option<Entry> {
             "Name" => name = Some(v.trim().to_string()),
             "Icon" => icon = Some(v.trim().to_string()),
             "StartupWMClass" => wm_class = Some(v.trim().to_lowercase()),
+            "Exec" => exec = exec_program(v),
             _ => {}
         }
     }
     let stem = path.file_stem()?.to_string_lossy().to_lowercase();
-    Some(Entry { stem, wm_class, name: name?, icon: icon.unwrap_or_default() })
+    Some(Entry { stem, wm_class, exec, name: name?, icon: icon.unwrap_or_default() })
 }
 
 fn load(dirs: &[PathBuf]) -> Vec<Entry> {
@@ -106,6 +115,33 @@ fn lookup_in(entries: &[Entry], class: &str) -> App {
     }
 }
 
+/// The app a program belongs to: the one whose `Exec=` runs it, or whose program it
+/// helps (`nyx-voice-asr` and `nyx-assistantd` are Voice's and Assistant's).
+fn program_in(entries: &[Entry], program: &str) -> Option<App> {
+    let p = program.to_lowercase();
+    let helps = |exec: &str| p.strip_prefix(exec).is_some_and(|rest| rest == "d" || rest.starts_with('-') || rest.starts_with('_'));
+    let e = entries
+        .iter()
+        .find(|e| e.exec.as_deref() == Some(p.as_str()))
+        .or_else(|| entries.iter().filter(|e| e.exec.as_deref().is_some_and(|x| x.len() >= 3 && helps(x))).max_by_key(|e| e.exec.as_ref().map_or(0, |x| x.len())))?;
+    Some(App { name: e.name.clone(), icon: if e.icon.is_empty() { p.clone() } else { e.icon.clone() } })
+}
+
+/// The app a running program (its executable's file name) belongs to, if a `.desktop`
+/// file runs it.
+pub fn for_program(program: &str) -> Option<App> {
+    static PROGRAMS: OnceLock<std::sync::Mutex<HashMap<String, Option<App>>>> = OnceLock::new();
+    let cache = PROGRAMS.get_or_init(Default::default);
+    if let Some(a) = cache.lock().ok().and_then(|c| c.get(program).cloned()) {
+        return a;
+    }
+    let app = program_in(ENTRIES.get_or_init(|| load(&data_dirs())), program);
+    if let Ok(mut c) = cache.lock() {
+        c.insert(program.to_string(), app.clone());
+    }
+    app
+}
+
 static ENTRIES: OnceLock<Vec<Entry>> = OnceLock::new();
 static CACHE: OnceLock<std::sync::Mutex<HashMap<String, App>>> = OnceLock::new();
 
@@ -140,5 +176,20 @@ mod tests {
         let none = lookup_in(&e, "org.acme.thing");
         assert_eq!((none.name.as_str(), none.icon.as_str()), ("Thing", "org.acme.thing"));
         assert!(none.icons_symbolic_first().starts_with("org.acme.thing-symbolic|"));
+    }
+
+    #[test]
+    fn programs_find_their_apps() {
+        let d = tempfile::tempdir().unwrap();
+        let apps = d.path().join("applications");
+        std::fs::create_dir_all(&apps).unwrap();
+        std::fs::write(apps.join("firefox.desktop"), "[Desktop Entry]\nName=Firefox\nIcon=firefox\nExec=/usr/lib/firefox/firefox %u\n").unwrap();
+        std::fs::write(apps.join("voice.desktop"), "[Desktop Entry]\nName=Voice\nIcon=voice\nExec=env GDK_BACKEND=wayland nyx-voice\n").unwrap();
+        let e = load(&[d.path().to_path_buf()]);
+        assert_eq!(program_in(&e, "firefox").unwrap().name, "Firefox");
+        assert_eq!(program_in(&e, "nyx-voice-asr").unwrap().name, "Voice", "a helper counts as its app");
+        assert_eq!(program_in(&e, "nyx-voiced").unwrap().name, "Voice");
+        assert!(program_in(&e, "nyx-voicemail").is_none());
+        assert!(program_in(&e, "qemu-system-x86_64").is_none());
     }
 }

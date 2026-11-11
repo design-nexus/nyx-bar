@@ -55,7 +55,7 @@ struct ItemWidget {
     rendered: RefCell<Option<Rc<Rendered>>>,
     last: RefCell<Option<Item>>,
     popover: RefCell<Option<(gtk::Popover, Rc<Rendered>)>>,
-    menu: RefCell<Option<gtk::PopoverMenu>>,
+    menu: RefCell<Option<gtk::Popover>>,
 }
 
 struct Bar {
@@ -788,6 +788,10 @@ fn new_bar(s: &Rc<Shared>, connector: &str, gmon: &gdk::Monitor) -> Rc<Bar> {
     center.set_end_widget(Some(&boxes[2]));
     window.set_child(Some(&center));
     window.present();
+    if std::env::var_os("NYX_BAR_DUMP").is_some() {
+        let w = window.clone();
+        glib::timeout_add_local_once(Duration::from_secs(4), move || dump(w.upcast_ref(), 0));
+    }
     Rc::new(Bar { connector: connector.into(), gmon: gmon.clone(), window, boxes, widgets: RefCell::default(), hidden: Cell::new(false) })
 }
 
@@ -906,15 +910,27 @@ fn relayout(s: &Rc<Shared>, b: &Rc<Bar>) {
     });
 }
 
-/// A pill group shows while any of its items does, and is drawn open while any is.
+/// A pill group shows while any of its items does, and is drawn open while any is. Its
+/// first and last shown items are marked `group-first` and `group-last` (hidden ones
+/// still count for CSS's :first-child).
 fn sync_group(group: &gtk::Box) {
     let mut any_visible = false;
     let mut any_open = false;
+    let mut shown = vec![];
     let mut c = group.first_child();
     while let Some(ch) = c {
         any_visible |= ch.is_visible();
         any_open |= ch.is_visible() && ch.has_css_class("open");
+        ch.remove_css_class("group-first");
+        ch.remove_css_class("group-last");
+        if ch.is_visible() {
+            shown.push(ch.clone());
+        }
         c = ch.next_sibling();
+    }
+    if let (Some(first), Some(last)) = (shown.first(), shown.last()) {
+        first.add_css_class("group-first");
+        last.add_css_class("group-last");
     }
     group.set_visible(any_visible);
     if any_open {
@@ -1129,6 +1145,7 @@ fn fill_popover(s: &Rc<Shared>, b: &Rc<Bar>, w: &Rc<ItemWidget>, plugin: &str, i
         p.add_css_class("nyx-bar-popover");
         p.set_has_arrow(false);
         p.set_position(gtk::PositionType::Bottom);
+        p.set_offset(0, 6);
         p.set_parent(&w.root);
         if test_no_grab() {
             p.set_autohide(false);
@@ -1172,24 +1189,26 @@ fn open_menu(s: &Rc<Shared>, b: &Rc<Bar>, w: &Rc<ItemWidget>, plugin: &str, item
     if let Some(old) = w.menu.borrow_mut().take() {
         old.unparent();
     }
-    let (ws, pid, iid, conn) = (Rc::downgrade(s), plugin.to_string(), item.to_string(), b.connector.clone());
-    let (model, group) = view::menu(
-        entries,
-        Rc::new(move |id: String| {
-            if let Some(s) = ws.upgrade() {
-                send_event(&s, &pid, &iid, &conn, EventKind::Action, None, None, Some(id), None, None);
-            }
-        }),
-    );
-    w.root.insert_action_group("pm", Some(&group));
-    let menu = gtk::PopoverMenu::from_model(Some(&model));
+    let menu = gtk::Popover::new();
     menu.add_css_class("nyx-bar-popover");
+    menu.add_css_class("nyx-bar-menu");
     menu.set_has_arrow(false);
     menu.set_position(gtk::PositionType::Bottom);
+    menu.set_offset(0, 6);
     menu.set_parent(&w.root);
     if test_no_grab() {
         menu.set_autohide(false);
     }
+    let (ws, wm, pid, iid, conn) = (Rc::downgrade(s), menu.downgrade(), plugin.to_string(), item.to_string(), b.connector.clone());
+    let pick: Rc<dyn Fn(String)> = Rc::new(move |id: String| {
+        if let Some(m) = wm.upgrade() {
+            m.popdown();
+        }
+        if let Some(s) = ws.upgrade() {
+            send_event(&s, &pid, &iid, &conn, EventKind::Action, None, None, Some(id), None, None);
+        }
+    });
+    menu.set_child(Some(&menu_rows(entries, &pick)));
     let wb = Rc::downgrade(b);
     menu.connect_closed(move |_| {
         if let Some(b) = wb.upgrade() {
@@ -1201,6 +1220,83 @@ fn open_menu(s: &Rc<Shared>, b: &Rc<Bar>, w: &Rc<ItemWidget>, plugin: &str, item
     }
     menu.popup();
     *w.menu.borrow_mut() = Some(menu);
+}
+
+/// A menu as the bar draws it: a row per entry (its icon, key cap, label and a check at
+/// the right), separators, dim lines for disabled entries (hints), and submenus that open
+/// in place under their entry.
+fn menu_rows(entries: &[MenuEntry], pick: &Rc<dyn Fn(String)>) -> gtk::Box {
+    let col = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    col.add_css_class("menu");
+    let theme = gdk::Display::default().map(|d| gtk::IconTheme::for_display(&d));
+    let image = |name: &str, class: &str| {
+        // `a|b|c`: the first the icon theme has.
+        let names: Vec<&str> = name.split('|').map(str::trim).filter(|n| !n.is_empty()).collect();
+        let name = names.iter().find(|n| theme.as_ref().is_some_and(|t| t.has_icon(n))).or(names.last()).copied().unwrap_or(name);
+        let i = gtk::Image::from_icon_name(name);
+        i.set_pixel_size(16);
+        i.add_css_class(class);
+        i
+    };
+    for e in entries {
+        if e.separator {
+            let sep = gtk::Separator::new(gtk::Orientation::Horizontal);
+            sep.add_css_class("msep");
+            col.append(&sep);
+            continue;
+        }
+        let row = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+        if let Some(i) = e.icon.as_deref().filter(|i| !i.is_empty()) {
+            row.append(&image(i, "mi-icon"));
+        }
+        if let Some(c) = &e.cap {
+            let cap = gtk::Label::new(Some(c));
+            cap.add_css_class("kbd");
+            cap.set_valign(gtk::Align::Center);
+            row.append(&cap);
+        }
+        let label = gtk::Label::new(Some(&e.label));
+        label.set_xalign(0.0);
+        label.set_hexpand(true);
+        label.set_ellipsize(gtk::pango::EllipsizeMode::End);
+        label.set_max_width_chars(40);
+        row.append(&label);
+        if e.checked == Some(true) {
+            row.append(&image("object-select-symbolic", "mi-check"));
+        }
+        let button = gtk::Button::new();
+        button.add_css_class("flat");
+        button.add_css_class("mi");
+        button.set_child(Some(&row));
+        if !e.enabled {
+            // Without an id it's a hint ("Switch with Super+Space"), not an entry.
+            if e.id.is_empty() {
+                button.add_css_class("hint");
+            }
+            button.set_sensitive(false);
+        }
+        col.append(&button);
+        if !e.children.is_empty() {
+            row.append(&image("pan-down-symbolic", "mi-chev"));
+            let sub = gtk::Revealer::new();
+            sub.set_transition_type(gtk::RevealerTransitionType::SlideDown);
+            sub.set_transition_duration(150);
+            let rows = menu_rows(&e.children, pick);
+            rows.add_css_class("sub");
+            sub.set_child(Some(&rows));
+            let r = sub.clone();
+            button.connect_clicked(move |b| {
+                let open = !r.reveals_child();
+                r.set_reveal_child(open);
+                if open { b.add_css_class("expanded") } else { b.remove_css_class("expanded") }
+            });
+            col.append(&sub);
+        } else if e.enabled {
+            let (pick, id) = (pick.clone(), e.id.clone());
+            button.connect_clicked(move |_| pick(id.clone()));
+        }
+    }
+    col
 }
 
 /// For `Bar1.ListPlugins`.
@@ -1276,11 +1372,14 @@ pub fn test_close(s: &Rc<Shared>) {
 }
 
 fn dump(w: &gtk::Widget, depth: usize) {
+    let at = w.root().and_then(|r| w.compute_point(&r, &gtk::graphene::Point::new(0.0, 0.0))).map(|p| (p.x(), p.y())).unwrap_or_default();
     eprintln!(
-        "{}{} {:?} {}x{} visible={} classes={:?}",
+        "{}{} {:?} @{},{} {}x{} visible={} classes={:?}",
         "  ".repeat(depth),
         w.type_().name(),
         w.downcast_ref::<gtk::Label>().map(|l| l.text().to_string()).unwrap_or_default(),
+        at.0,
+        at.1,
         w.width(),
         w.height(),
         w.is_visible(),

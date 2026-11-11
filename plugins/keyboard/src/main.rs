@@ -91,12 +91,17 @@ fn menu(p: &Plugin<Option<Layouts>>, l: &Layouts) {
         .enumerate()
         .map(|(i, (c, v))| {
             let name = describe(c, v).unwrap_or_else(|| if v.is_empty() { c.clone() } else { format!("{c} ({v})") });
-            let mut e = menu_entry(&format!("layout:{i}"), &format!("{}  {name}", code(c)));
+            let mut e = menu_entry(&format!("layout:{i}"), &name);
+            e.cap = Some(code(c));
             e.checked = Some(i == l.active);
             e
         })
         .collect();
-    entries.push(menu_entry("settings", "Keyboard settings"));
+    entries.push(MenuEntry { label: "Click the key cap for the next one".into(), enabled: false, ..Default::default() });
+    entries.push(MenuEntry { separator: true, ..Default::default() });
+    let mut settings = menu_entry("settings", "Keyboard settings");
+    settings.icon = Some("input-keyboard-symbolic".into());
+    entries.push(settings);
     p.menu(ITEM, entries);
 }
 

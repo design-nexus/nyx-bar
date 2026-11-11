@@ -4,6 +4,7 @@
 window.nyx-bar {
   background-color: @theme_panel;
   color: @theme_text;
+  font-size: 13px;
 }
 
 .bar-sections {
@@ -61,7 +62,9 @@ window.nyx-bar {
   background-color: mix(@theme_panel, @theme_accent, 0.2);
 }
 
-.bar-item.open image {
+/* The item's own icons: its popover is a child of the item too. */
+.bar-item.open > image,
+.bar-item.open > :not(popover) image {
   color: @theme_accent;
 }
 
@@ -69,11 +72,13 @@ window.nyx-bar {
   background-color: transparent;
 }
 
-.bar-item label {
+.bar-item > :not(popover) label,
+.bar-item > label {
   font-feature-settings: "tnum";
 }
 
-.bar-item image {
+.bar-item > image,
+.bar-item > :not(popover) image {
   -gtk-icon-size: 16px;
 }
 
@@ -175,13 +180,17 @@ levelbar.plugin-progress block.empty {
   border-radius: 2px;
 }
 
-/* Popovers: the bar's panels. */
-popover.nyx-bar-popover > contents {
+/* Popovers: the bar's panels. The window prefix outranks the theme's own popover rule. */
+window.nyx-bar popover.nyx-bar-popover > contents {
   background-color: @theme_popover;
   border: 1px solid @theme_border;
   border-radius: 15px;
   padding: 12px;
-  box-shadow: 0 8px 30px alpha(@theme_shadow, 0.45), 0 1px 3px alpha(@theme_shadow, 0.3);
+  box-shadow: 0 8px 30px alpha(@theme_shadow, 0.6), 0 1px 3px alpha(@theme_shadow, 0.4);
+}
+
+window.nyx-bar popover.nyx-bar-popover {
+  font-size: 13px;
 }
 
 popover.nyx-bar-popover .plugin-row {
@@ -203,6 +212,100 @@ popover.nyx-bar-popover .card {
 popover.nyx-bar-popover .selected {
   background-color: alpha(@theme_accent, 0.13);
   border-radius: 10px;
+}
+
+/* A popover's footer (view::footer): a divider, the link in the accent at the left. */
+popover.nyx-bar-popover .pfoot {
+  margin-top: 4px;
+  padding: 10px 6px 2px 6px;
+  border-top: 1px solid alpha(@theme_text, 0.09);
+}
+
+popover.nyx-bar-popover button.link {
+  min-height: 0;
+  padding: 0;
+  border-radius: 4px;
+  background: none;
+  box-shadow: none;
+  color: @theme_accent;
+  font-size: 12.5px;
+  font-weight: 500;
+  text-decoration-line: none;
+}
+
+popover.nyx-bar-popover button.link label {
+  text-decoration-line: none;
+}
+
+popover.nyx-bar-popover button.link:hover label {
+  text-decoration-line: underline;
+}
+
+/* Menus the bar draws (right clicks): 32 px rows, the hovered one accent-tinted, check
+ * marks at the right, submenus in place under a line. */
+window.nyx-bar popover.nyx-bar-menu > contents {
+  padding: 5px;
+  min-width: 230px;
+}
+
+popover.nyx-bar-menu button.mi {
+  min-height: 32px;
+  padding: 0 9px;
+  border-radius: 7px;
+  background: none;
+  box-shadow: none;
+  font-weight: 400;
+  color: @theme_text;
+}
+
+popover.nyx-bar-menu button.mi:hover,
+popover.nyx-bar-menu button.mi:focus-visible {
+  background-color: alpha(@theme_accent, 0.14);
+}
+
+popover.nyx-bar-menu image.mi-icon,
+popover.nyx-bar-menu image.mi-chev {
+  color: @theme_dim_text;
+}
+
+popover.nyx-bar-menu button.mi:hover image.mi-icon {
+  color: @theme_accent;
+}
+
+popover.nyx-bar-menu image.mi-check {
+  color: @theme_accent;
+}
+
+popover.nyx-bar-menu button.mi.expanded image.mi-chev {
+  -gtk-icon-transform: rotate(180deg);
+}
+
+popover.nyx-bar-menu button.mi.hint {
+  min-height: 24px;
+  font-size: 11.5px;
+}
+
+/* Disabled, so drawn faded: dim rather than tertiary keeps it legible. */
+popover.nyx-bar-menu button.mi.hint label {
+  color: @theme_dim_text;
+}
+
+popover.nyx-bar-menu separator.msep {
+  min-height: 1px;
+  margin: 5px 4px;
+  background-color: alpha(@theme_text, 0.09);
+}
+
+popover.nyx-bar-menu .sub {
+  margin: 2px 0 2px 26px;
+  padding-left: 8px;
+  border-left: 2px solid alpha(@theme_text, 0.09);
+}
+
+popover.nyx-bar-menu .sub button.mi {
+  min-height: 28px;
+  font-size: 12.5px;
+  color: @theme_dim_text;
 }
 
 popover.nyx-bar-popover separator {
