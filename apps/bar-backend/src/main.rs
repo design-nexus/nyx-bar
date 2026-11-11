@@ -22,6 +22,7 @@
 mod css;
 mod dbus;
 mod host;
+mod mono;
 
 use nyx_plugin_protocol::EventKind;
 use serde_json::{Value, json};

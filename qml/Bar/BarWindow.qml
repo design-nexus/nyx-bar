@@ -2,6 +2,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Wayland
 import Nyx.Ui
+import Nyx.PluginView
 
 // One screen's bar: a full-width strip at the top in the bar's colour, the left, centre
 // and right sections, related items sharing a pill, thin dividers.
@@ -23,6 +24,12 @@ PanelWindow {
         spacious: { group: 30, item: 24, font: 13, radius: 10, pad: 9 }
     })
     readonly property var size: sizes[bar.size] || { group: bar.height - 6, item: bar.height - 10, font: 13, radius: 8, pad: 8 }
+    // The user's bar.css for the bar, its pills and dividers (their GTK names).
+    readonly property var user: bar.user || ({})
+    function userColor(part, fallback) {
+        const p = user[part];
+        return p && p["background-color"] ? PluginStyle.color(p["background-color"]) : fallback;
+    }
 
     screen: screenObj
     visible: screenObj !== null && !mon.hidden
@@ -31,7 +38,7 @@ PanelWindow {
     anchors.right: true
     implicitHeight: bar.height
     exclusiveZone: bar.height
-    color: Style.panel
+    color: userColor("bar", Style.panel)
     WlrLayershell.layer: WlrLayer.Top
     WlrLayershell.namespace: "nyx-bar"
     WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
@@ -44,8 +51,8 @@ PanelWindow {
         property int openCount: 0
         implicitWidth: pillRow.implicitWidth + 6
         implicitHeight: w.size.group
-        radius: w.size.radius
-        color: openCount > 0 ? Style.mix(Style.panel, Style.accent, 0.14) : Style.alpha(Style.text, 0.055)
+        radius: w.user.group && w.user.group["border-radius"] !== undefined ? w.user.group["border-radius"] : w.size.radius
+        color: openCount > 0 ? w.userColor("groupOpen", Style.mix(Style.panel, Style.accent, 0.14)) : w.userColor("group", Style.alpha(Style.text, 0.055))
         visible: pillRow.shown > 0
         Behavior on color {
             ColorAnimation {
@@ -130,7 +137,7 @@ PanelWindow {
                             x: 4
                             width: 1
                             height: 16
-                            color: Style.alpha(Style.text, 0.12)
+                            color: sec.w.userColor("divider", Style.alpha(Style.text, 0.12))
                         }
                     }
                 }

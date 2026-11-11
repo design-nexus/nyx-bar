@@ -29,6 +29,44 @@ pub fn compile(css: &str) -> Value {
     Value::Array(rules)
 }
 
+/// The user's `~/.config/nyx/bar.css`, as the GTK bar reads it: rules for every item
+/// (their selectors may name an item's classes, `.bar-item`, `.plugin-<id>`), and the
+/// bar's own parts by their GTK names: the bar (`window.nyx-bar`, `.bar-sections`),
+/// pills (`.bar-group`, `.bar-group.open`) and dividers (`.bar-divider`).
+pub fn user(css: &str) -> Value {
+    let (mut items, mut bar, mut group, mut group_open, mut divider) = (vec![], Map::new(), Map::new(), Map::new(), Map::new());
+    for (prelude, body) in blocks(css) {
+        if prelude.starts_with('@') {
+            continue;
+        }
+        let props = declarations(&body);
+        if props.is_empty() {
+            continue;
+        }
+        for sel in prelude.split(',').map(str::trim).filter(|s| !s.is_empty()) {
+            // The window around everything says nothing for QML's rules.
+            let parts: Vec<&str> =
+                sel.split_whitespace().filter(|p| *p != ">").skip_while(|p| matches!(*p, "window.nyx-bar" | ".nyx-bar" | "window")).collect();
+            let into = match parts.as_slice() {
+                [] | [".bar-sections"] => Some(&mut bar),
+                [p] if p.starts_with(".bar-group") && p.contains(".open") => Some(&mut group_open),
+                [p] if p.starts_with(".bar-group") => Some(&mut group),
+                [p] if p.starts_with(".bar-divider") => Some(&mut divider),
+                _ => None,
+            };
+            if let Some(m) = into {
+                m.extend(props.clone());
+                continue;
+            }
+            let Some(chain) = selector(&parts.join(" ")) else { continue };
+            let spec: usize = chain.iter().map(|c| c.spec).sum();
+            let compounds: Vec<Value> = chain.into_iter().map(|c| c.json).collect();
+            items.push(json!({ "sel": compounds, "spec": spec, "props": Value::Object(props.clone()) }));
+        }
+    }
+    json!({ "items": items, "bar": bar, "group": group, "groupOpen": group_open, "divider": divider })
+}
+
 fn blocks(css: &str) -> Vec<(String, String)> {
     let mut text = String::new();
     let mut rest = css;
@@ -243,5 +281,23 @@ mod tests {
         assert_eq!(r.len(), 7, ":first-child is left out");
         assert_eq!(r[5]["props"]["background-color"], json!({ "hex": "#a78bfa", "a": 0.22 }));
         assert_eq!(r[6]["props"]["background-color"], json!({ "t": "accent", "shade": 1.08 }));
+    }
+
+    #[test]
+    fn the_users_bar_css() {
+        let u = user(
+            "window.nyx-bar { background-color: #101010; }\n.bar-group { background-color: alpha(@theme_text, 0.1); border-radius: 6px; }\n\
+             .bar-group.open { background-color: @theme_accent; }\n.bar-divider { background-color: #ff0000; }\n\
+             .bar-item.plugin-nyx_clock label { font-weight: bold; }\nwindow.nyx-bar .plugin-nyx_weather { padding: 0 8px; }",
+        );
+        assert_eq!(u["bar"]["background-color"], json!({ "hex": "#101010" }));
+        assert_eq!(u["group"]["border-radius"], 6.0);
+        assert_eq!(u["groupOpen"]["background-color"], json!({ "t": "accent" }));
+        assert_eq!(u["divider"]["background-color"], json!({ "hex": "#ff0000" }));
+        let items = u["items"].as_array().unwrap();
+        assert_eq!(items.len(), 2);
+        assert_eq!(items[0]["sel"][0]["classes"], json!(["bar-item", "plugin-nyx_clock"]));
+        assert_eq!(items[0]["sel"][1]["type"], "label");
+        assert_eq!(items[1]["sel"][0]["classes"], json!(["plugin-nyx_weather"]));
     }
 }

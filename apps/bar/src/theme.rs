@@ -3,9 +3,13 @@
 
 use nyx_theme::{Style, ThemeMode, ThemePrefs};
 
-pub fn install() {
+/// `test`: a test copy (`--only`), which mustn't publish the theme it shows for the
+/// desktop's Quickshell parts, as the bar does.
+pub fn install(test: bool) {
     nyx_theme::use_design_2();
-    nyx_theme::use_shell_scope();
+    if !test {
+        nyx_theme::use_shell_scope();
+    }
     nyx_theme::install(Style {
         window_class: "nyx-bar",
         base_skip: &[],

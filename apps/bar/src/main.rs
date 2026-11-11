@@ -110,7 +110,8 @@ fn main() -> std::process::ExitCode {
         None => (APP_ID.to_string(), Default::default()),
     };
     let app = gtk::Application::builder().application_id(id).flags(flags).build();
-    app.connect_startup(|_| theme::install());
+    let test = only.is_some();
+    app.connect_startup(move |_| theme::install(test));
     let started = std::cell::Cell::new(false);
     app.connect_activate(move |app| {
         if !started.replace(true) {

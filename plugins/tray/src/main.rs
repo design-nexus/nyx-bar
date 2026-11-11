@@ -386,11 +386,13 @@ fn centered(mut n: Node) -> Node {
     n
 }
 
+/// An app's tray icon. The bar draws one that is all a single neutral colour (an app's
+/// white or black icon) in the text colour, so it shows on light and dark themes.
 fn icon_node(t: &Tray, size: i32) -> Node {
     match &t.icon {
-        Icon::Name(name) => icon_sized(name, size),
-        Icon::File(f) => image_path(f).size(size, size),
-        Icon::Png(data) => image_data(data.clone()).size(size, size),
+        Icon::Name(name) => icon_sized(name, size).class("tint-if-mono"),
+        Icon::File(f) => image_path(f).size(size, size).class("tint-if-mono"),
+        Icon::Png(data) => image_data(data.clone()).size(size, size).class("tint-if-mono"),
         Icon::None => icon_sized("application-x-executable-symbolic", size),
     }
 }

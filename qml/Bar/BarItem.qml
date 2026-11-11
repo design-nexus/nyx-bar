@@ -20,7 +20,7 @@ Item {
     readonly property bool shownOnBar: entry !== null && entry.visible !== false
     readonly property string plugin: key.split("\t")[0]
     readonly property string itemId: key.split("\t")[1] || ""
-    readonly property var rules: Host.rules.concat(win.bar.styles[plugin] || [])
+    readonly property var rules: Host.rules.concat(win.bar.styles[plugin] || [], (win.bar.user && win.bar.user.items) || [])
     property bool popOpen: false
     property bool menuOpen: false
     readonly property bool isOpen: popOpen || menuOpen || !!(entry && entry.open)

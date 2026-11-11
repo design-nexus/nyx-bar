@@ -89,8 +89,9 @@ right = ["nyx.clock"]
   calendar's layout and the workspaces' look.
 
 Which items show at all is in `~/.config/nyx/plugins.toml` (`nyx plugin configure`).
-Restyle anything in `~/.config/nyx/bar.css` (the GTK interface; the Quickshell one
-doesn't read it yet).
+Restyle anything in `~/.config/nyx/bar.css`. The Quickshell interface reads the same
+file: rules for items (`.bar-item`, `.plugin-<id>`, and what's inside them), the bar
+(`window.nyx-bar`), pills (`.bar-group`, `.bar-group.open`) and dividers (`.bar-divider`).
 
 ## Build
 

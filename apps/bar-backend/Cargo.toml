@@ -13,6 +13,7 @@ path = "src/main.rs"
 
 [dependencies]
 async-channel.workspace = true
+gdk-pixbuf = "0.22"
 gio = "0.22"
 glib = "0.22"
 nyx-bar-core = { path = "../../crates/nyx-bar-core" }
@@ -21,7 +22,7 @@ nyx-desktop = { git = "https://github.com/design-nexus/nyx-core.git", rev = "166
 nyx-plugin.workspace = true
 nyx-plugin-host.workspace = true
 nyx-plugin-protocol.workspace = true
-nyx-theme-core = { git = "https://github.com/design-nexus/nyx-design.git", rev = "604b46a71bedc340779cddfc27c438c52da90061" }
+nyx-theme-core = { git = "https://github.com/design-nexus/nyx-design.git", rev = "997a2c17d778e4c667a4f2ab2b1b16e28afcc522" }
 nyx-ui-link = { git = "https://github.com/design-nexus/nyx-core.git", rev = "166ff17bdb09dd6c5f130fd28ecf81d1f8a59d2d" }
 serde_json.workspace = true
 toml.workspace = true

@@ -57,6 +57,8 @@ pub struct Shared {
     pub plugins: RefCell<BTreeMap<String, Running>>,
     /// Each plugin's style.css, compiled for QML.
     styles: RefCell<HashMap<String, Value>>,
+    /// The user's bar.css, compiled for QML.
+    user_css: RefCell<Value>,
     hidden: RefCell<HashMap<String, bool>>,
     visible: Cell<bool>,
     rev: Cell<u64>,
@@ -98,6 +100,7 @@ pub fn start(link: nyx_ui_link::Link, only: Option<String>) -> Rc<Shared> {
         state: RefCell::new(State::load()),
         plugins: RefCell::default(),
         styles: RefCell::default(),
+        user_css: RefCell::new(read_user_css()),
         hidden: RefCell::default(),
         visible: Cell::new(true),
         rev: Cell::new(0),
@@ -159,8 +162,28 @@ fn monitor_dir(path: &Path, f: impl Fn(Option<String>) + 'static) -> Option<gio:
     Some(m)
 }
 
+fn user_css_path() -> PathBuf {
+    std::env::var_os("XDG_CONFIG_HOME")
+        .map(PathBuf::from)
+        .filter(|p| p.is_absolute())
+        .unwrap_or_else(|| PathBuf::from(std::env::var_os("HOME").unwrap_or_default()).join(".config"))
+        .join("nyx/bar.css")
+}
+
+fn read_user_css() -> Value {
+    crate::css::user(&std::fs::read_to_string(user_css_path()).unwrap_or_default())
+}
+
 fn watch_files(s: &Rc<Shared>) {
     let mut monitors = vec![];
+    // The user's restyling, as the GTK bar reads it.
+    let ws = Rc::downgrade(s);
+    monitors.extend(monitor_file(&user_css_path(), move || {
+        if let Some(s) = ws.upgrade() {
+            *s.user_css.borrow_mut() = read_user_css();
+            publish(&s);
+        }
+    }));
     // The layout in any layer (by hand, Settings, or NyxOS's defaults in an update).
     let (tx, rx) = async_channel::unbounded::<()>();
     let store = nyx_config::Store::new(nyx_bar_core::DOMAIN, toml::Table::new());
@@ -703,6 +726,7 @@ fn item_for<'a>(r: &'a Running, item: &str, connector: &str) -> Option<&'a Item>
 fn view_value(r: &Running, id: &str, node: &Node) -> Value {
     let mut v = serde_json::to_value(node).unwrap_or(Value::Null);
     resolve_paths(&mut v, &r.plugin.dir, &paths::storage_dir(id), r.plugin.trust.is_trusted());
+    crate::mono::mark(&mut v);
     v
 }
 
@@ -779,6 +803,7 @@ pub fn state_json(s: &Shared) -> Value {
         "height": config.height(),
         "monitors": monitors,
         "styles": styles,
+        "user": s.user_css.borrow().clone(),
     })
 }
 
