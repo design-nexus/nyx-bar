@@ -308,6 +308,15 @@ bar is hidden. The user's `~/.config/nyx/bar.css` loads after every plugin's.
 @keyframes pulse { from { opacity: 1; } to { opacity: 0.35; } }
 ```
 
+NyxOS's Quickshell bar reads the same file but draws less: padding, margins, minimum
+sizes, backgrounds, corners, borders, inset shadows that are a ring
+(`inset 0 0 0 1px …`) or a line on one side (`inset 0 -2px 0 …`), opacity, text colour,
+size, weight and spacing, and `-gtk-icon-size`. Colours can be theme names, `#rgb`,
+`#rrggbb`, `rgb()`/`rgba()`, `alpha()`, `mix()` and `shade()`. Selectors are classes,
+node types, `:hover`, `:not(.x)` and `&`; animations don't run there, so don't rely on
+one to show state. Icons without a size of their own follow the bar's size (14 px
+compact, 16 default and cozy, 18 spacious).
+
 ### Frames
 
 For pixels you draw yourself (needs `frames`): put a `frame` node with an `id` in a

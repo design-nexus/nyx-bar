@@ -1,8 +1,8 @@
 //! Nyx Bar panels: the Notification Center's bell (with the unread count, a moon in Do
 //! not disturb, and a right-click menu: Do not disturb for an hour, until morning or
-//! until turned off, clear, settings) and the Control Center's button (lit while it's
-//! open; off by default, as the status icons open Control Center). Each shows only when
-//! its program is installed.
+//! until turned off, clear, settings) and the Control Center's button (it opens the
+//! dashboard; nothing on the bar lights while Control Center is open). Each shows only
+//! when its program is installed.
 
 use nyx_plugin_sdk::protocol::EventKind;
 use nyx_plugin_sdk::services::dbus::{self, Connection};
@@ -14,13 +14,9 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 const NOTIFYD: &str = "io.github.design_nexus.nyx.Notifications";
 const NOTIFYD_PATH: &str = "/io/github/design_nexus/nyx/Notifications";
 const NOTIFYD_IFACE: &str = "io.github.design_nexus.nyx.Notifications1";
-const CC: &str = "io.github.design_nexus.nyx.ControlCenter";
-const PANEL_PATH: &str = "/io/github/design_nexus/nyx/Panel";
-const PANEL_IFACE: &str = "io.github.design_nexus.nyx.Panel1";
 
 enum Data {
     Notifications { unread: u64, dnd: bool },
-    ControlCenter(bool),
 }
 
 fn state_home() -> PathBuf {
@@ -42,10 +38,6 @@ fn dnd(conn: Option<&Connection>) -> bool {
         return on;
     }
     json(&state_home().join("omarchy/notifications/quiet.json"))["dnd"].as_bool().unwrap_or(false)
-}
-
-fn cc_open(conn: &Connection) -> bool {
-    conn.call_method(Some(CC), PANEL_PATH, Some(PANEL_IFACE), "IsOpen", &()).ok().and_then(|r| r.body().deserialize::<bool>().ok()).unwrap_or(false)
 }
 
 /// The bell with the unread count beside it, or a moon in Do not disturb.
@@ -107,17 +99,10 @@ fn menu(p: &Plugin<Data>, dnd_on: bool, unread: u64) {
     p.menu("notifications", entries);
 }
 
-fn grid(open: bool) -> Node {
-    let cell = |x: f64, y: f64| Draw::Rect {
-        x,
-        y,
-        w: 4.8,
-        h: 4.8,
-        radius: 1.5,
-        fill: open.then(|| color("accent")),
-        stroke: Some(color(if open { "accent" } else { "text" })),
-        width: Some(1.25),
-    };
+/// The Control Center button's glyph. It doesn't light while Control Center is open:
+/// the panel itself shows that.
+fn grid() -> Node {
+    let cell = |x: f64, y: f64| Draw::Rect { x, y, w: 4.8, h: 4.8, radius: 1.5, fill: None, stroke: Some(color("text")), width: Some(1.25) };
     vector([0.0, 0.0, 16.0, 16.0], vec![cell(2.4, 2.4), cell(8.8, 2.4), cell(2.4, 8.8), cell(8.8, 8.8)]).size(16, 16)
 }
 
@@ -170,24 +155,8 @@ fn main() {
         });
     }
     if plugin.enabled("control-center") && have_cc {
-        plugin.item(item("control-center").view(grid(false)).tooltip("Control Center").on_click(&["nyx-control-center", "--toggle"]));
-        if let Some(c) = &session {
-            let send = plugin.data();
-            let conn = c.clone();
-            // Opened says when it opens; while it's open, ask now and then whether it still is.
-            let trigger = nyx_plugin_sdk::services::refresher(Duration::from_secs(30), move || send(Data::ControlCenter(cc_open(&conn))));
-            dbus::listen(c, None, Some(PANEL_PATH), trigger.clone());
-            std::thread::spawn(move || {
-                loop {
-                    std::thread::sleep(Duration::from_millis(700));
-                    if trigger.send(()).is_err() {
-                        return;
-                    }
-                }
-            });
-        }
+        plugin.item(item("control-center").view(grid()).tooltip("Control Center").on_click(&["nyx-control-center", "--toggle"]));
     }
-    let mut cc_was = false;
     let (mut unread_now, mut dnd_now) = (0u64, false);
     for input in inputs {
         match input {
@@ -212,16 +181,6 @@ fn main() {
                     menu(&plugin, dnd, unread);
                 }
                 (unread_now, dnd_now) = (unread, dnd);
-            }
-            Input::Data(Data::ControlCenter(open)) => {
-                if open != cc_was {
-                    cc_was = open;
-                    let mut i = item("control-center").view(grid(open)).tooltip("Control Center").on_click(&["nyx-control-center", "--toggle"]);
-                    if open {
-                        i = i.class("active");
-                    }
-                    plugin.item(i);
-                }
             }
             Input::Event(e) if e.item == "notifications" && e.kind == EventKind::Action => {
                 let until = |t: i64| {

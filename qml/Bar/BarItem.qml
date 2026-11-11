@@ -20,10 +20,12 @@ Item {
     readonly property bool shownOnBar: entry !== null && entry.visible !== false
     readonly property string plugin: key.split("\t")[0]
     readonly property string itemId: key.split("\t")[1] || ""
-    readonly property var rules: Host.rules.concat(win.bar.styles[plugin] || [], (win.bar.user && win.bar.user.items) || [])
+    readonly property var rules: win.app.rulesFor(plugin)
     property bool popOpen: false
     property bool menuOpen: false
-    readonly property bool isOpen: popOpen || menuOpen || !!(entry && entry.open)
+    // Lit while its popover is open or the plugin says so; a menu doesn't light it, as in
+    // the GTK bar.
+    readonly property bool isOpen: popOpen || !!(entry && entry.open)
     readonly property var rootClasses: ["bar-item", "plugin-" + plugin.replace(/\./g, "_"), "item-" + itemId.replace(/[^A-Za-z0-9-]/g, "_")]
         .concat(grouped ? ["grouped"] : [], first ? ["group-first"] : [], last ? ["group-last"] : [], isOpen ? ["open"] : [], entry ? (entry["class"] || []) : [])
     // The item's own rules (`&.bar-item…`), the bar's then the plugin's.
@@ -50,8 +52,16 @@ Item {
     Component.onCompleted: {
         takeView();
         win.app.register(key, patcher);
+        win.shrinkers = win.shrinkers.concat([it]);
     }
-    Component.onDestruction: win.app.unregister(key, patcher)
+    Component.onDestruction: {
+        win.app.unregister(key, patcher);
+        win.shrinkers = win.shrinkers.filter(x => x !== it);
+        win.refit();
+    }
+    // What its `shrink` labels can give up when the bar is short of room.
+    readonly property real spare: view.spare
+    onSpareChanged: win.refit()
     QtObject {
         id: patcher
         readonly property string monitor: it.win.name
@@ -88,8 +98,10 @@ Item {
         rules: it.rules
         rootClasses: it.rootClasses
         rootHovered: hover.hovered
-        rootText: Object.assign({ "font-size": it.win.size.font }, it.rs.color ? { color: it.rs.color } : {})
+        rootText: Object.assign({ "font-size": it.win.size.font, "icon-size": it.win.size.icon }, it.rs.color ? { color: it.rs.color } : {})
         tabular: true
+        tipBelow: true
+        squeeze: it.win.squeeze
         onViewEvent: (kind, control, value) => it.win.client.request("ViewEvent", { monitor: it.win.name, plugin: it.plugin, item: it.itemId, kind: kind, control: control, value: value })
     }
 
@@ -111,21 +123,32 @@ Item {
                 menu.open();
         });
     }
+    // Under the view: a node with an action (a workspace, a button in the item) takes
+    // its own clicks; the rest are the item's.
     MouseArea {
+        z: -1
         anchors.fill: parent
         acceptedButtons: Qt.LeftButton | Qt.MiddleButton | Qt.RightButton
         cursorShape: Qt.PointingHandCursor
         onClicked: m => it.click(m.button === Qt.RightButton ? 3 : m.button === Qt.MiddleButton ? 2 : 1)
+        // Whole wheel steps (120), as GTK sends them: a touchpad's stream of small
+        // deltas doesn't turn into a step for each.
+        property real wheel: 0
         onWheel: w => {
-            if (w.angleDelta.y !== 0)
-                it.win.client.request("Scroll", { monitor: it.win.name, plugin: it.plugin, item: it.itemId, up: w.angleDelta.y > 0 });
+            wheel += w.angleDelta.y;
+            while (Math.abs(wheel) >= 120) {
+                const up = wheel > 0;
+                wheel -= up ? 120 : -120;
+                it.win.client.request("Scroll", { monitor: it.win.name, plugin: it.plugin, item: it.itemId, up: up });
+            }
         }
     }
 
+    // The item's tip gives way to a tooltip of a node inside it.
     Tip {
         target: it
         text: it.entry && it.entry.tooltip ? it.entry.tooltip : ""
-        shown: hover.hovered && !it.isOpen
+        shown: hover.hovered && !it.isOpen && !it.menuOpen && view.tipHovers === 0
         below: true
     }
 

@@ -890,6 +890,7 @@ fn relayout(s: &Rc<Shared>, b: &Rc<Bar>) {
                 }
             }
         }
+        sync_dividers(bx);
     }
     b.widgets.borrow_mut().retain(|k, w| {
         let kept = keep.contains(k);
@@ -936,8 +937,29 @@ fn sync_group(group: &gtk::Box) {
 }
 
 fn sync_group_of(root: &gtk::Box) {
-    if let Some(g) = root.parent().and_downcast::<gtk::Box>().filter(|p| p.has_css_class("bar-group")) {
+    let mut section = root.parent().and_downcast::<gtk::Box>();
+    if let Some(g) = section.clone().filter(|p| p.has_css_class("bar-group")) {
         sync_group(&g);
+        section = g.parent().and_downcast::<gtk::Box>();
+    }
+    if let Some(s) = section {
+        sync_dividers(&s);
+    }
+}
+
+/// A section's dividers show only between shown items (see `shown_dividers`).
+fn sync_dividers(section: &gtk::Box) {
+    let mut kids = vec![];
+    let mut c = section.first_child();
+    while let Some(ch) = c {
+        c = ch.next_sibling();
+        kids.push(ch);
+    }
+    let slots: Vec<Option<bool>> = kids.iter().map(|k| (!k.has_css_class("bar-divider")).then(|| k.is_visible())).collect();
+    for (k, on) in kids.iter().zip(nyx_bar_core::shown_dividers(&slots)) {
+        if k.has_css_class("bar-divider") {
+            k.set_visible(on);
+        }
     }
 }
 
@@ -989,7 +1011,21 @@ fn refresh_widget(s: &Rc<Shared>, b: &Rc<Bar>, plugin: &str, item: &str) {
         w.root.remove_css_class("open");
     }
     sync_group_of(&w.root);
-    if w.last.borrow().as_ref() == Some(&current) {
+    // The classes the item asked for before and doesn't now, and the ones it does.
+    if let Some(old) = w.last.borrow().as_ref() {
+        for c in old.class.iter().filter(|c| !current.class.contains(c) && c.as_str() != "open") {
+            w.root.remove_css_class(c);
+        }
+    }
+    for c in &current.class {
+        if c.chars().all(|ch| ch.is_ascii_alphanumeric() || ch == '-' || ch == '_') {
+            w.root.add_css_class(c);
+        }
+    }
+    // A new tree only for a new view: a changed tooltip, class or open state isn't one.
+    let same = w.last.borrow().as_ref().is_some_and(|l| nyx_bar_core::same_view(l, &current));
+    if same {
+        *w.last.borrow_mut() = Some(current);
         return;
     }
     let Some(ctx) = item_ctx(s, plugin, item, &b.connector, None) else { return };
@@ -1001,17 +1037,6 @@ fn refresh_widget(s: &Rc<Shared>, b: &Rc<Bar>, plugin: &str, item: &str) {
         w.root.remove(&old.root);
     }
     w.root.append(&rendered.root);
-    // The classes the item asked for before and doesn't now.
-    if let Some(old) = w.last.borrow().as_ref() {
-        for c in old.class.iter().filter(|c| !current.class.contains(c) && c.as_str() != "open") {
-            w.root.remove_css_class(c);
-        }
-    }
-    for c in &current.class {
-        if c.chars().all(|ch| ch.is_ascii_alphanumeric() || ch == '-' || ch == '_') {
-            w.root.add_css_class(c);
-        }
-    }
     *w.rendered.borrow_mut() = Some(rendered);
     *w.last.borrow_mut() = Some(current);
 }

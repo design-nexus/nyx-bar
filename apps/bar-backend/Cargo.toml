@@ -18,11 +18,11 @@ gio = "0.22"
 glib = "0.22"
 nyx-bar-core = { path = "../../crates/nyx-bar-core" }
 nyx-config.workspace = true
-nyx-desktop = { git = "https://github.com/design-nexus/nyx-core.git", rev = "166ff17bdb09dd6c5f130fd28ecf81d1f8a59d2d" }
+nyx-desktop = { git = "https://github.com/design-nexus/nyx-core.git", rev = "918729504918ec344b3a853a5ce0ea2c9dbb7b5f" }
 nyx-plugin.workspace = true
 nyx-plugin-host.workspace = true
 nyx-plugin-protocol.workspace = true
-nyx-theme-core = { git = "https://github.com/design-nexus/nyx-design.git", rev = "553f65567057150af4929033896531879528bbf4" }
-nyx-ui-link = { git = "https://github.com/design-nexus/nyx-core.git", rev = "166ff17bdb09dd6c5f130fd28ecf81d1f8a59d2d" }
+nyx-theme-core = { git = "https://github.com/design-nexus/nyx-design.git", rev = "0117f5f535db0b0770c1b0062140cafcf648f6de" }
+nyx-ui-link = { git = "https://github.com/design-nexus/nyx-core.git", rev = "918729504918ec344b3a853a5ce0ea2c9dbb7b5f" }
 serde_json.workspace = true
 toml.workspace = true

@@ -18,16 +18,13 @@ PopupWindow {
     readonly property int maxWidth: 960
     readonly property int maxHeight: 680
 
-    // Plugins send their popover again as it changes: a new tree only when it differs.
-    property string _text: ""
+    // Plugins send their popover again as it changes; the view updates in place unless
+    // its shape changed. One the plugin takes back closes.
     property var shown: null
     function take() {
-        const v = entry ? entry.popover : null;
-        const t = v ? JSON.stringify(v) : "";
-        if (t !== _text) {
-            _text = t;
-            shown = v;
-        }
+        shown = entry ? entry.popover : null;
+        if (!shown && visible)
+            close();
     }
     onEntryChanged: take()
     Component.onCompleted: take()
@@ -38,8 +35,11 @@ PopupWindow {
     function toggle() {
         opened ? close() : open();
     }
+    // When it last closed: the click outside that closes it can also land on its item,
+    // which mustn't open it again at once.
+    property real closedAt: 0
     function open() {
-        if (!shown)
+        if (!shown || Date.now() - closedAt < 200)
             return;
         visible = true;
         opened = true;
@@ -48,10 +48,17 @@ PopupWindow {
     function close() {
         visible = false;
     }
-    onVisibleChanged: if (!visible && opened) {
+    function noteClosed() {
         opened = false;
+        closedAt = Date.now();
         item.win.client.request("PopoverClosed", { monitor: item.win.name, plugin: item.plugin, item: item.itemId });
     }
+    onVisibleChanged: if (!visible && opened)
+        noteClosed()
+    // An item rebuilt (the layout changed) while its popover was open: the plugin hears
+    // it closed.
+    Component.onDestruction: if (opened)
+        noteClosed()
 
     anchor.item: item
     anchor.rect.x: 0
@@ -67,6 +74,10 @@ PopupWindow {
     visible: false
     implicitWidth: surface.width + 2 * room
     implicitHeight: surface.height + 2 * room
+    // Input only over the surface: the shadow's room overlaps the item below the bar.
+    mask: Region {
+        item: surface
+    }
 
     MultiEffect {
         anchors.fill: surface

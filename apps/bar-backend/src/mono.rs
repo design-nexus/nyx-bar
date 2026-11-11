@@ -22,6 +22,9 @@ pub fn mark(v: &mut Value) {
             mark(c);
         }
     }
+    if let Some(c) = v.get_mut("child").filter(|c| c.is_object()) {
+        mark(c);
+    }
     let marked = v.get("class").and_then(Value::as_array).is_some_and(|c| c.iter().any(|x| x == "tint-if-mono"));
     if !marked {
         return;
@@ -58,6 +61,16 @@ pub fn mark(v: &mut Value) {
     if let Some(c) = o.get_mut("class").and_then(Value::as_array_mut) {
         c.push("mono".into());
     }
+}
+
+/// Whether the node `id` in a view is marked `tint-if-mono` (a patch to it can't be
+/// marked on its own: it doesn't say the node's classes).
+pub fn marked(v: &Value, id: &str) -> bool {
+    if v.get("id").and_then(Value::as_str) == Some(id) {
+        return v.get("class").and_then(Value::as_array).is_some_and(|c| c.iter().any(|x| x == "tint-if-mono"));
+    }
+    v.get("children").and_then(Value::as_array).is_some_and(|c| c.iter().any(|c| marked(c, id)))
+        || v.get("child").is_some_and(|c| marked(c, id))
 }
 
 fn load(source: &str) -> Option<Pixbuf> {
@@ -212,6 +225,7 @@ mod tests {
             {"node": "image", "path": file.to_string_lossy(), "class": ["tint-if-mono"]},
             {"node": "image", "path": file.to_string_lossy()},
         ]});
+        assert!(super::marked(&serde_json::json!({"node": "scroll", "child": {"node": "box", "children": [{"node": "icon", "id": "t", "class": ["tint-if-mono"]}]}}), "t"));
         mark(&mut v);
         let marked = &v["children"][0];
         assert_eq!(marked["class"], serde_json::json!(["tint-if-mono", "mono"]));

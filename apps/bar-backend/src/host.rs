@@ -2,7 +2,7 @@
 //! in the three plugin folders, run while one of their bar parts is turned on (and, for
 //! third-party plugins, approved), restarted when their folder, manifest, parts or limits
 //! change. What they show goes to the interface as topic `bar`; their patches go on as
-//! `Patch` events.
+//! `NodePatch` events.
 
 use gio::prelude::*;
 use nyx_bar_core::{Config, Shown, Slot, arrange, should_hide};
@@ -39,13 +39,23 @@ pub struct Running {
     limits: Limits,
     /// Items in the order they first came.
     pub items: Vec<Item>,
-    /// Each item's revision: up when the plugin sends it again, not on a patch.
+    /// Each item's revision: up when the plugin sends a new view, not on a patch.
     revs: HashMap<Key, u64>,
     menus: HashMap<Key, Vec<MenuEntry>>,
     popovers: HashMap<Key, Node>,
     pub state: RunState,
     generation: u64,
     warned: HashSet<String>,
+}
+
+impl Running {
+    /// What the plugin showed, gone with it.
+    fn clear(&mut self) {
+        self.items.clear();
+        self.revs.clear();
+        self.menus.clear();
+        self.popovers.clear();
+    }
 }
 
 pub struct Shared {
@@ -501,7 +511,7 @@ fn on_report(s: &Rc<Shared>, id: &str, report: Report) {
             eprintln!("nyx-bar-backend: {id} stopped ({status}){}", if stderr.is_empty() { String::new() } else { format!(": {stderr}") });
             if let Some(r) = s.plugins.borrow_mut().get_mut(id) {
                 r.state = RunState::Crashed(status);
-                r.items.clear();
+                r.clear();
             }
             publish(s);
         }
@@ -510,7 +520,7 @@ fn on_report(s: &Rc<Shared>, id: &str, report: Report) {
             eprintln!("nyx-bar-backend: {id} is off: {reason}");
             if let Some(r) = s.plugins.borrow_mut().get_mut(id) {
                 r.state = RunState::Unavailable(reason.clone());
-                r.items.clear();
+                r.clear();
             }
             publish(s);
             if crashed {
@@ -550,17 +560,28 @@ fn on_message(s: &Rc<Shared>, id: &str, msg: PluginMsg) {
                     warn_once(s, id, what);
                     return;
                 }
-                let rev = s.rev.get() + 1;
-                s.rev.set(rev);
-                r.revs.insert((item.id.clone(), item.monitor.clone()), rev);
-                match r.items.iter_mut().find(|i| i.id == item.id && i.monitor == item.monitor) {
-                    Some(old) => *old = item,
+                // Plugins send whole items; only a new view is a new tree for the
+                // interface (a changed tooltip, class or open state isn't), and an item
+                // sent again unchanged changes nothing.
+                let old = r.items.iter().position(|i| i.id == item.id && i.monitor == item.monitor);
+                if old.is_some_and(|o| r.items[o] == item) {
+                    return;
+                }
+                let new_view = old.is_none_or(|o| !nyx_bar_core::same_view(&r.items[o], &item));
+                if new_view {
+                    let rev = s.rev.get() + 1;
+                    s.rev.set(rev);
+                    r.revs.insert((item.id.clone(), item.monitor.clone()), rev);
+                }
+                match old {
+                    Some(o) => r.items[o] = item,
                     None => r.items.push(item),
                 }
             }
             publish(s);
         }
         PluginMsg::Patch(p) => {
+            let mut resend = false;
             {
                 let mut plugins = s.plugins.borrow_mut();
                 let Some(r) = plugins.get_mut(id) else { return };
@@ -569,22 +590,37 @@ fn on_message(s: &Rc<Shared>, id: &str, msg: PluginMsg) {
                     for n in &p.nodes {
                         view.apply_patch(&n.id, &n.set);
                     }
+                    // A tray-style picture changed: the whole item again, so it's marked.
+                    let tree = serde_json::to_value(&view).unwrap_or(Value::Null);
+                    if p.nodes.iter().any(|n| crate::mono::marked(&tree, &n.id)) {
+                        resend = true;
+                        let rev = s.rev.get() + 1;
+                        s.rev.set(rev);
+                        r.revs.insert((item.id.clone(), item.monitor.clone()), rev);
+                    }
                     item.view = Some(view);
                 }
+                // A patch for one monitor leaves a popover shared by all of them alone;
+                // the plugin's next popover brings it up to date.
                 for (k, node) in r.popovers.iter_mut() {
-                    if k.0 == p.item {
+                    if k.0 == p.item && (p.monitor.is_none() || k.1 == p.monitor) {
                         for n in &p.nodes {
                             node.apply_patch(&n.id, &n.set);
                         }
                     }
                 }
             }
-            // Patches are small and come often: the interface applies them in place.
+            if resend {
+                publish(s);
+                return;
+            }
+            // Patches are small and come often: the interface applies them in place. Not
+            // "Patch": that's the link's own event for state changes.
             let mut nodes = serde_json::to_value(&p.nodes).unwrap_or(Value::Null);
             if let Some(r) = s.plugins.borrow().get(id) {
                 resolve_paths(&mut nodes, &r.plugin.dir, &paths::storage_dir(id), r.plugin.trust.is_trusted());
             }
-            s.link.emit("Patch", json!({"plugin": id, "item": p.item, "monitor": p.monitor, "nodes": nodes}));
+            s.link.emit("NodePatch", json!({"plugin": id, "item": p.item, "monitor": p.monitor, "nodes": nodes}));
         }
         PluginMsg::Menu(m) => {
             if let Some(r) = s.plugins.borrow_mut().get_mut(id) {
@@ -608,7 +644,11 @@ fn on_message(s: &Rc<Shared>, id: &str, msg: PluginMsg) {
         }
         PluginMsg::Remove { item, monitor } => {
             if let Some(r) = s.plugins.borrow_mut().get_mut(id) {
+                let gone = |k: &Key| k.0 == item && (monitor.is_none() || k.1 == monitor);
                 r.items.retain(|i| !(i.id == item && (monitor.is_none() || i.monitor == monitor)));
+                r.revs.retain(|k, _| !gone(k));
+                r.menus.retain(|k, _| !gone(k));
+                r.popovers.retain(|k, _| !gone(k));
             }
             publish(s);
         }
@@ -763,7 +803,9 @@ pub fn state_json(s: &Shared) -> Value {
     let desktop = s.desktop.borrow().clone();
     let config = s.config.borrow().clone();
     let plugins = s.plugins.borrow();
-    let mut monitors = vec![];
+    // Keyed by name (as items are by "plugin\titem"), so the interface's merge patches
+    // carry only what changed instead of every view again.
+    let mut monitors = Map::new();
     for m in desktop.monitors.iter().filter(|m| !m.disabled) {
         match &s.only {
             Some(o) if *o != m.name => continue,
@@ -789,7 +831,7 @@ pub fn state_json(s: &Shared) -> Value {
         }
         let arranged = arrange(&sections, &shown);
         let sections: Vec<Value> = arranged.iter().map(|list| Value::Array(list.iter().map(slot_json).collect())).collect();
-        monitors.push(json!({
+        monitors.insert(m.name.clone(), json!({
             "name": m.name,
             "width": m.logical_size().0,
             "hidden": s.hidden.borrow().get(&m.name).copied().unwrap_or(false),

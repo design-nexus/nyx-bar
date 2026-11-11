@@ -90,6 +90,8 @@ window.size-compact .bar-left > .bar-item,
 window.size-compact .bar-center > .bar-item,
 window.size-compact .bar-right > .bar-item { margin: 4px 0; }
 window.size-compact .pips { opacity: 0; min-height: 0; }
+window.size-compact .bar-item > image,
+window.size-compact .bar-item > :not(popover) image { -gtk-icon-size: 14px; }
 
 window.size-cozy .bar-group { min-height: 28px; }
 window.size-cozy .bar-item { min-height: 24px; }
@@ -102,6 +104,8 @@ window.size-spacious .bar-item { min-height: 24px; padding: 0 9px; }
 window.size-spacious .bar-left > .bar-item,
 window.size-spacious .bar-center > .bar-item,
 window.size-spacious .bar-right > .bar-item { margin: 8px 0; }
+window.size-spacious .bar-item > image,
+window.size-spacious .bar-item > :not(popover) image { -gtk-icon-size: 18px; }
 
 /* Classes plugins may use on items and nodes. */
 .accent { color: @theme_accent; }

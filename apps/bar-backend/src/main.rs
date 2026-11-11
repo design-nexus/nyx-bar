@@ -5,11 +5,12 @@
 //! interface draws a bar per monitor and talks to this over
 //! `$XDG_RUNTIME_DIR/nyx-bar/ui.sock` (nyx-ui-link):
 //!
-//! - topic `bar`: `{size, height, monitors: [{name, width, hidden, sections, items}],
-//!   styles}`; each section is a list of slots (`item`, `group`, `divider`), each item
-//!   its view with paths resolved, `rev` (up when the plugin sends it again), tooltip,
-//!   classes, popover and menu; `styles` holds each plugin's style.css as rules (`css.rs`);
-//! - events `Patch` (`{plugin, item, monitor, nodes}`), and `TestClick` and `TestClose`
+//! - topic `bar`: `{size, height, monitors: {name: {name, width, hidden, sections,
+//!   items}}, styles, user}`; each section is a list of slots (`item`, `group`,
+//!   `divider`), each item (by "plugin\titem") its view with paths resolved, `rev` (up
+//!   when the plugin sends a new view), tooltip, classes, popover and menu; `styles` holds
+//!   each plugin's style.css as rules (`css.rs`), `user` the user's bar.css;
+//! - events `NodePatch` (`{plugin, item, monitor, nodes}`), and `TestClick` and `TestClose`
 //!   for screenshots;
 //! - operations: `Click` (`{monitor, plugin, item, button, anchor}`, answering what it
 //!   did: `command`, `popover`, `menu` or `event`), `Scroll`, `ViewEvent`, `MenuAction`,

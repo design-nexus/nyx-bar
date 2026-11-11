@@ -67,12 +67,14 @@ and CPU limits. Writing one: [docs/plugins.md](docs/plugins.md).
 left = [["nyx.launcher", "nyx.workspaces"], "nyx.window"]
 center = [["nyx.clock"]]
 right = ["nyx.privacy", "nyx.recording", "nyx.keyboard", ["nyx.media"], "*",
-         ["nyx.weather", "nyx.stats"], "nyx.tray", "nyx.updates", "nyx.keepawake",
+         ["nyx.weather", "nyx.stats"], "nyx.tray", "nyx.updates",
          ["nyx.system"], ["nyx.panels/notifications"], ["nyx.panels/control-center"]]
 size = "default"
 
 [plugins."nyx.clock"]
-format = "%a %b %-d  %H:%M"
+date = "long"      # short, long, numeric, iso or none
+hours = "12"       # auto, 12 or 24
+seconds = false
 
 [monitors."HDMI-A-1"]
 right = ["nyx.clock"]
@@ -80,7 +82,8 @@ right = ["nyx.clock"]
 
 - Entries in brackets share one pill (`["nyx.weather", "nyx.stats"]`); the pill lights
   while one of them is open. `"|"` draws a thin divider. `"*"` is where enabled items
-  the file doesn't place go (another plugin's, AI Hub's).
+  the file doesn't place go (another plugin's, AI Hub's), each plugin's in a pill of
+  its own.
 - The file is written on first start as the layout above, commented out, so NyxOS's
   layout applies until you change it. The very first bar's file, never edited, is
   replaced by that template on start (kept as `bar.toml.old`).

@@ -273,9 +273,13 @@ fn main() {
         send(Data::Items(items));
     });
     // Items register, change icons or menus, and go away: every signal on the bus
-    // that could be one of those nudges a refresh.
-    for path in ["/StatusNotifierItem", "/org/ayatana", WATCHER_PATH, "/MenuBar", "/org/freedesktop/DBus"] {
+    // that could be one of those nudges a refresh. Names leaving the bus matter only
+    // while this plugin is the watcher; another watcher says so itself.
+    for path in ["/StatusNotifierItem", "/org/ayatana", WATCHER_PATH, "/MenuBar"] {
         dbus::listen(&conn, None, Some(path), trigger.clone());
+    }
+    if own_watcher {
+        dbus::listen(&conn, None, Some("/org/freedesktop/DBus"), trigger.clone());
     }
     let t2 = trigger.clone();
     std::thread::spawn(move || {

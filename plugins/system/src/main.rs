@@ -1,13 +1,12 @@
 //! Nyx Bar system status: network, Bluetooth, volume and battery, each its own item
 //! (the user picks which), usually sharing one pill. Each opens its own Control Center
-//! page (Wi-Fi, Bluetooth, Sound, Battery) and right-click opens the dashboard; the items
-//! stay lit while Control Center is open. Scrolling over the volume changes it and a
+//! page (Wi-Fi, Bluetooth, Sound, Battery) and right-click opens the dashboard; opening
+//! Control Center lights nothing on the bar. Scrolling over the volume changes it and a
 //! middle click mutes. Without Control Center, a click opens a popover with quick
 //! controls instead.
 
 use nyx_plugin_sdk::protocol::{Direction, EventKind};
 use nyx_plugin_sdk::services::audio::{self, Audio};
-use nyx_plugin_sdk::services::dbus::{self, Connection};
 use nyx_plugin_sdk::services::bluetooth::{self, Bluetooth};
 use nyx_plugin_sdk::services::network::{self, Kind, Network};
 use nyx_plugin_sdk::services::power::{self, Battery};
@@ -19,36 +18,25 @@ enum Data {
     Bluetooth(Bluetooth),
     Audio(Audio),
     Battery(Battery),
-    ControlCenter(bool),
 }
 
-const CC: &str = "io.github.design_nexus.nyx.ControlCenter";
-const PANEL_PATH: &str = "/io/github/design_nexus/nyx/Panel";
-const PANEL_IFACE: &str = "io.github.design_nexus.nyx.Panel1";
-
-/// Whether Control Center is installed (then it holds the controls) and open.
+/// Whether Control Center is installed (then it holds the controls).
 #[derive(Clone, Copy, Default)]
 struct Cc {
     installed: bool,
-    open: bool,
 }
 
 /// An item opens its Control Center page; right-click opens the dashboard.
-fn with_cc(mut i: Item, page: &str, cc: Cc) -> Item {
+fn with_cc(i: Item, page: &str, cc: Cc) -> Item {
     if !cc.installed {
         return i;
     }
-    i.open = cc.open;
     i.on_click(&["nyx-control-center", "--toggle", page]).on_right_click(&["nyx-control-center", "--toggle"])
 }
 
 /// The quick-controls popover, only where Control Center isn't there to open.
 fn popover(p: &Plugin<Data>, item: &str, view: Node, cc: Cc) {
     p.popover(item, (!cc.installed).then_some(view));
-}
-
-fn cc_open(conn: &Connection) -> bool {
-    conn.call_method(Some(CC), PANEL_PATH, Some(PANEL_IFACE), "IsOpen", &()).ok().and_then(|r| r.body().deserialize::<bool>().ok()).unwrap_or(false)
 }
 
 fn network(p: &Plugin<Data>, n: &Network, cc: Cc) {
@@ -193,24 +181,7 @@ fn main() {
             plugin.item(item(id).hidden(true));
         }
     }
-    let mut cc = Cc { installed: have("nyx-control-center"), open: false };
-    if cc.installed
-        && let Ok(conn) = Connection::session()
-    {
-        let send = send.clone();
-        let c = conn.clone();
-        // Opened and Closed say when it changes; asking now and then catches the rest.
-        let trigger = nyx_plugin_sdk::services::refresher(std::time::Duration::from_secs(30), move || send(Data::ControlCenter(cc_open(&c))));
-        dbus::listen(&conn, None, Some(PANEL_PATH), trigger.clone());
-        std::thread::spawn(move || {
-            loop {
-                std::thread::sleep(std::time::Duration::from_millis(700));
-                if trigger.send(()).is_err() {
-                    return;
-                }
-            }
-        });
-    }
+    let cc = Cc { installed: have("nyx-control-center") };
     if plugin.enabled("network") {
         let s = send.clone();
         network::watch(move |n| s(Data::Network(n)));
@@ -261,12 +232,6 @@ fn main() {
             Input::Data(Data::Battery(b)) => {
                 battery(&plugin, &b, battery_pct, cc);
                 last_battery = Some(b);
-            }
-            Input::Data(Data::ControlCenter(open)) => {
-                if open != cc.open {
-                    cc.open = open;
-                    redraw_all(cc, volume_pct, battery_pct, &last_net, &last_bt, &last_audio, &last_battery);
-                }
             }
             Input::Settings(s) => {
                 volume_pct = s.get("volume_percent").and_then(|v| v.as_bool()).unwrap_or(false);

@@ -251,20 +251,27 @@ pub fn layout_json(layers: &nyx_config::Layers, plugins: &[nyx_plugin::Plugin], 
     let mut names = serde_json::Map::new();
     names.insert("|".into(), "Divider".into());
     names.insert(OTHERS.into(), "Other plugins".into());
+    let mut descriptions = serde_json::Map::new();
+    // Entries whose plugin runs and part is on: the others show nothing where placed.
+    let mut on = vec![];
     let mut unplaced = vec![];
     for p in plugins.iter().filter(|p| p.manifest.has_kind(Kind::Bar)) {
         let m = &p.manifest;
         let parts = m.parts(Kind::Bar);
         names.insert(m.id.clone(), m.name.clone().into());
+        descriptions.insert(m.id.clone(), m.description.clone().into());
         for part in &parts {
             let entry = format!("{}/{}", m.id, part.id);
             let name = if parts.len() > 1 { format!("{}: {}", m.name, part.name) } else { m.name.clone() };
-            names.insert(entry, name.into());
+            names.insert(entry.clone(), name.into());
+            descriptions.insert(entry, (if part.description.is_empty() { &m.description } else { &part.description }).clone().into());
         }
         if !state.runs(p, Kind::Bar) {
             continue;
         }
         let enabled = state.enabled_parts(m, Kind::Bar);
+        on.push(serde_json::Value::from(m.id.clone()));
+        on.extend(enabled.iter().map(|part| serde_json::Value::from(format!("{}/{}", m.id, part))));
         if placed.contains(&m.id) {
             continue;
         }
@@ -280,6 +287,8 @@ pub fn layout_json(layers: &nyx_config::Layers, plugins: &[nyx_plugin::Plugin], 
         "sections": { "left": section(sections[0]), "center": section(sections[1]), "right": section(sections[2]) },
         "user_sets_layout": SECTIONS.iter().any(|s| user.contains_key(*s)),
         "names": names,
+        "descriptions": descriptions,
+        "on": on,
         "unplaced": unplaced,
     })
 }
@@ -353,11 +362,16 @@ pub fn arrange(sections: &[Vec<Entry>; 3], shown: &[Shown]) -> [Vec<Slot>; 3] {
     // What the layout doesn't place goes to its plugin's section, at its "*"; without
     // one, on the side nearer the middle, so the default items keep the screen's edges
     // (the right section's extras go before them, the others' after).
+    // Each plugin's unplaced items share a pill of their own, as the default items do.
     let mut extra: [Vec<Slot>; 3] = Default::default();
     for (i, s) in shown.iter().enumerate() {
         if !placed[i] {
             let si = SECTIONS.iter().position(|x| *x == s.section).unwrap_or(2);
-            extra[si].push(Slot::Item((s.plugin.clone(), s.item.clone())));
+            let item = (s.plugin.clone(), s.item.clone());
+            match extra[si].last_mut() {
+                Some(Slot::Group(g)) if g[0].0 == s.plugin => g.push(item),
+                _ => extra[si].push(Slot::Group(vec![item])),
+            }
         }
     }
     for (si, slots) in extra.into_iter().enumerate() {
@@ -376,6 +390,34 @@ pub fn arrange(sections: &[Vec<Entry>; 3], shown: &[Shown]) -> [Vec<Slot>; 3] {
             tidy.pop();
         }
         *slots = tidy;
+    }
+    out
+}
+
+/// Whether two versions of a plugin's item draw the same tree: a changed tooltip, class
+/// or open state isn't a new view, and an interface shouldn't rebuild for it.
+pub fn same_view(a: &nyx_plugin_protocol::Item, b: &nyx_plugin_protocol::Item) -> bool {
+    a.view == b.view && a.icon == b.icon && a.text == b.text && a.badge == b.badge && a.progress == b.progress
+}
+
+/// Which of a section's dividers show, given whether each slot shows now (`None` for a
+/// divider): one shows only between shown slots, never at an edge or beside another,
+/// so a divider whose items are hidden for now (nothing playing, no updates) goes too.
+pub fn shown_dividers(slots: &[Option<bool>]) -> Vec<bool> {
+    let mut out = vec![false; slots.len()];
+    let (mut seen, mut pending) = (false, None);
+    for (i, s) in slots.iter().enumerate() {
+        match s {
+            Some(true) => {
+                if let Some(d) = pending.take() {
+                    out[d] = true;
+                }
+                seen = true;
+            }
+            Some(false) => {}
+            None if seen => pending = Some(i),
+            None => {}
+        }
     }
     out
 }
@@ -435,6 +477,16 @@ mod tests {
             urgent: false,
             grouped: Vec::new(),
         }
+    }
+
+    #[test]
+    fn dividers_show_only_between_shown_slots() {
+        let (s, h, d) = (Some(true), Some(false), None);
+        assert_eq!(shown_dividers(&[s, d, s]), [false, true, false]);
+        assert_eq!(shown_dividers(&[s, d, h]), [false, false, false], "nothing shown after");
+        assert_eq!(shown_dividers(&[h, d, s]), [false, false, false], "nothing shown before");
+        assert_eq!(shown_dividers(&[s, d, h, d, s]), [false, false, false, true, false], "one of two around a hidden item");
+        assert_eq!(shown_dividers(&[d, s, d]), [false, false, false]);
     }
 
     fn shown(plugin: &str, item: &str, part: &str, section: &str) -> Shown {
@@ -511,9 +563,9 @@ mod tests {
             shown("tray", "tray-1", "main", "right"),
         ];
         let [l, c, r] = arrange(&sections, &items);
-        assert_eq!(names(&l), vec!["ws/workspaces", "acme.ping/ping"]);
+        assert_eq!(names(&l), vec!["ws/workspaces", "[acme.ping/ping]"], "what isn't placed has a pill of its own");
         assert!(c.is_empty());
-        assert_eq!(names(&r), vec!["tray/tray-1", "sys/volume", "clock/time", "sys/network"], "what isn't placed goes before the placed items");
+        assert_eq!(names(&r), vec!["[tray/tray-1]", "sys/volume", "clock/time", "sys/network"], "what isn't placed goes before the placed items");
 
         let sections = [e(&["ws"]), vec![], e(&["media", "*", "weather", "sys"])];
         let items = vec![
@@ -525,8 +577,8 @@ mod tests {
             shown("acme.ping", "ping", "main", "left"),
         ];
         let [l, _, r] = arrange(&sections, &items);
-        assert_eq!(names(&r), vec!["media/media", "ai/hub", "weather/now", "sys/volume"], "at the \"*\"");
-        assert_eq!(names(&l), vec!["ws/workspaces", "acme.ping/ping"], "no \"*\" on the left: after the placed items");
+        assert_eq!(names(&r), vec!["media/media", "[ai/hub]", "weather/now", "sys/volume"], "at the \"*\"");
+        assert_eq!(names(&l), vec!["ws/workspaces", "[acme.ping/ping]"], "no \"*\" on the left: after the placed items");
     }
 
     #[test]

@@ -1,8 +1,8 @@
-/* Plugin CSS is scoped to this plugin's items. The status icons sit 9 px apart in their
- * pill (4 + the pill's 1 px + 4), with the usual 8 px at its ends; each still lights
- * on its own. */
+/* Plugin CSS is scoped to this plugin's items. The status icons sit 13 px apart in
+ * their pill (6 + the pill's 1 px + 6), with the usual 8 px at its ends; each still
+ * lights on its own. */
 &.bar-item {
-  padding: 0 4px;
+  padding: 0 6px;
 }
 
 &.bar-item.group-first {

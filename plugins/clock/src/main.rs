@@ -14,6 +14,8 @@ use nyx_plugin_sdk::view::*;
 use nyx_plugin_sdk::{Input, Plugin, spawn};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::SystemTime;
 
 const ITEM: &str = "time";
@@ -143,7 +145,13 @@ fn read_tasks(path: &Path, day: NaiveDate) -> Vec<Task> {
 
 #[derive(Debug, Clone)]
 struct Settings {
-    format: String,
+    /// The bar's date (dim, may be empty) and time (bold), as chrono formats.
+    date: String,
+    time: String,
+    /// The bar's time has seconds, so it ticks every second.
+    seconds: bool,
+    /// Times everywhere else: the tooltip, agenda, upcoming days and reminders.
+    twelve: bool,
     wide: bool,
     sunday_first: bool,
     next_event: bool,
@@ -159,8 +167,39 @@ impl Settings {
         let list = |k: &str| -> Option<Vec<String>> {
             v.get(k).and_then(|x| x.as_array()).map(|a| a.iter().filter_map(|i| i.as_str().map(String::from)).collect())
         };
+        let twelve = match v.get("hours").map(|h| h.as_str().map(String::from).unwrap_or_else(|| h.to_string())).as_deref() {
+            Some("12") => true,
+            Some("24") => false,
+            _ => twelve_hour(),
+        };
+        let seconds = b("seconds", false);
+        let time = match (twelve, seconds) {
+            (true, true) => "%-I:%M:%S %p",
+            (true, false) => "%-I:%M %p",
+            (false, true) => "%H:%M:%S",
+            (false, false) => "%H:%M",
+        };
+        let date = match s("date", "short").as_str() {
+            "long" => "%A, %B %-d",
+            "numeric" => numeric_date(),
+            "iso" => "%Y-%m-%d",
+            "none" => "",
+            _ => "%a %b %-d",
+        };
+        // A format of your own: a double space splits the date from the time.
+        let (date, time) = match Some(s("format", "")).filter(|f| valid_format(f)) {
+            Some(f) => match f.rsplit_once("  ") {
+                Some((d, t)) => (d.to_string(), t.to_string()),
+                None => (String::new(), f),
+            },
+            None => (date.to_string(), time.to_string()),
+        };
+        let seconds = ["%S", "%-S", "%T", "%X", "%r", "%s"].iter().any(|p| time.contains(p));
         Settings {
-            format: s("format", "%a %b %-d  %H:%M"),
+            date,
+            time,
+            seconds,
+            twelve,
             wide: s("layout", "wide") != "compact",
             sunday_first: s("week_start", "monday") == "sunday",
             next_event: b("next_event", true),
@@ -168,6 +207,11 @@ impl Settings {
             holidays: b("holidays", true),
             reminder_lists: list("reminder_lists"),
         }
+    }
+
+    /// A time of day outside the bar's clock.
+    fn hm(&self, t: DateTime<Local>) -> String {
+        fmt(t, if self.twelve { "%-I:%M %p" } else { "%H:%M" })
     }
 
     fn shows(&self, e: &Event) -> bool {
@@ -183,8 +227,48 @@ impl Settings {
 }
 
 enum Tick {
+    Second,
     Minute,
     Files,
+}
+
+/// The locale's region ("US" from `en_US.UTF-8`).
+fn region() -> String {
+    let locale =
+        ["LC_ALL", "LC_TIME", "LANG"].iter().find_map(|k| std::env::var(k).ok().filter(|v| !v.is_empty())).unwrap_or_default();
+    locale.split(['.', '@']).next().unwrap_or("").rsplit('_').next().unwrap_or("").to_string()
+}
+
+/// A 12-hour clock where the locale uses one, as Nyx Calendar does.
+fn twelve_hour() -> bool {
+    ["US", "CA", "AU", "NZ", "IN", "PH", "PK", "EG", "SA"].contains(&region().as_str())
+}
+
+/// The day and month in numbers, in the locale's order.
+fn numeric_date() -> &'static str {
+    let r = region();
+    if ["US", "PH", "BZ", "FM", "MH", "PW"].contains(&r.as_str()) {
+        "%-m/%-d"
+    } else if ["DE", "AT", "CH", "PL", "RU", "UA", "CZ", "SK", "FI", "NO", "DK", "TR"].contains(&r.as_str()) {
+        "%-d.%-m."
+    } else {
+        "%-d/%-m"
+    }
+}
+
+/// A strftime format chrono can use; a bad one falls back to the built-in styles.
+fn valid_format(f: &str) -> bool {
+    !f.trim().is_empty() && !chrono::format::StrftimeItems::new(f).any(|i| matches!(i, chrono::format::Item::Error))
+}
+
+/// `t` formatted, or empty if the format can't be shown (it never panics).
+fn fmt(t: DateTime<Local>, f: &str) -> String {
+    use std::fmt::Write;
+    let mut out = String::new();
+    if write!(out, "{}", t.format(f)).is_err() {
+        out.clear();
+    }
+    out
 }
 
 struct State {
@@ -340,11 +424,12 @@ fn until(mins: i64) -> String {
 /// The bar item: the date dim, the time bold, then the next event (on a narrow monitor,
 /// only how long until it).
 fn bar_item(st: &State, now: DateTime<Local>, narrow: bool) -> Item {
-    let text = now.format(&st.settings.format).to_string();
-    let mut children = match text.rsplit_once("  ") {
-        Some((date, time)) => vec![label(date).class("dim"), label(time).class("strong")],
-        None => vec![label(text.clone()).class("strong")],
-    };
+    let date = fmt(now, &st.settings.date);
+    let mut children = vec![];
+    if !date.is_empty() {
+        children.push(label(date).id("date").class("dim"));
+    }
+    children.push(label(fmt(now, &st.settings.time)).id("time").class("strong"));
     let mut tip = now.format("%A, %B %-d, %Y").to_string();
     if st.settings.next_event
         && let Some(e) = st.next_event(now.timestamp())
@@ -356,12 +441,12 @@ fn bar_item(st: &State, now: DateTime<Local>, narrow: bool) -> Item {
             (false, true) => format!("{} in {}", short(&e.title, 22), until(mins)),
             (false, false) => format!("{} · {}", short(&e.title, 22), until(mins)),
         };
-        let mut chip = hbox([dot(&e.paint(), 6.0), label(text)]).spacing(5).class("chip");
+        let mut chip = hbox([dot(&e.paint(), 6.0), label(text).class("shrink")]).spacing(5).class("chip");
         if soon {
             chip = chip.class("warning");
         }
         children.push(chip);
-        tip.push_str(&format!("\nNext: {} at {}", e.title, local(e.starts).format("%H:%M")));
+        tip.push_str(&format!("\nNext: {} at {}", e.title, st.settings.hm(local(e.starts))));
     }
     item(ITEM).view(hbox(children).spacing(6)).tooltip(tip).on_right_click(&["nyx-calendar"])
 }
@@ -399,20 +484,20 @@ fn month_grid(st: &State, today: NaiveDate, cell: (i32, i32)) -> Node {
                 }
             }
             let dots = hbox(colors.iter().map(|c| dot(c, 5.0))).spacing(2).height(5);
-            days.push(centered(vbox([num, centered(dots)])).spacing(2).size(cell.0, cell.1).class("day").action(&format!("day:{day}")).tooltip(&day_tip(day, &events)));
+            days.push(centered(vbox([num, centered(dots)])).spacing(2).size(cell.0, cell.1).class("day").action(&format!("day:{day}")).tooltip(&day_tip(&st.settings, day, &events)));
         }
         rows.push(hbox(days).spacing(0));
     }
     vbox(rows).spacing(1).class("month")
 }
 
-fn day_tip(day: NaiveDate, events: &[&Event]) -> String {
+fn day_tip(s: &Settings, day: NaiveDate, events: &[&Event]) -> String {
     let mut t = day.format("%A, %B %-d").to_string();
     for e in events.iter().take(6) {
         if e.all_day {
             t.push_str(&format!("\n{}", e.title));
         } else {
-            t.push_str(&format!("\n{} {}", local(e.starts).format("%H:%M"), e.title));
+            t.push_str(&format!("\n{} {}", s.hm(local(e.starts)), e.title));
         }
     }
     t
@@ -425,7 +510,8 @@ fn agenda(st: &State, day: NaiveDate, now: i64) -> Vec<Node> {
     }
     let today = day == local(now).date_naive();
     let next = events.iter().filter(|e| !e.all_day && e.ends > now).min_by_key(|e| e.starts).map(|e| (e.title.clone(), e.starts));
-    let now_line = || hbox([dot("danger", 7.0), keep(local(now).format("%H:%M").to_string(), 7).class("now-t"), separator().class("now-line").expand()]).spacing(6).margin(1, 8, 1, 8);
+    let now_line = || hbox([dot("danger", 7.0), keep(st.settings.hm(local(now)), 7).class("now-t"), separator().class("now-line").expand()]).spacing(6).margin(1, 8, 1, 8);
+    let time_w = if st.settings.twelve { 58 } else { 40 };
     let mut rows = vec![];
     let mut now_shown = !today;
     for e in events {
@@ -434,9 +520,9 @@ fn agenda(st: &State, day: NaiveDate, now: i64) -> Vec<Node> {
             now_shown = true;
         }
         let time = if e.all_day {
-            vbox([label("All day").class("tm-s")]).width(40)
+            vbox([label("All day").class("tm-s")]).width(time_w)
         } else {
-            vbox([label(local(e.starts).format("%H:%M").to_string()).class("tm-s"), label(local(e.ends).format("%H:%M").to_string()).class("tm-e")]).spacing(0).width(40)
+            vbox([label(st.settings.hm(local(e.starts))).class("tm-s"), label(st.settings.hm(local(e.ends))).class("tm-e")]).spacing(0).width(time_w)
         };
         let sub = if e.location.is_empty() || e.location.starts_with("https://") { e.calendar.clone() } else { format!("{} · {}", e.calendar, e.location) };
         let mut row = vec![time, bar(&e.paint(), 32), vbox([label(&e.title).class("et"), label(sub).class("es")]).spacing(1).expand()];
@@ -474,7 +560,7 @@ fn agenda(st: &State, day: NaiveDate, now: i64) -> Vec<Node> {
     vec![vbox(rows).spacing(2)]
 }
 
-fn due_text(t: &Task, today: NaiveDate) -> (String, bool) {
+fn due_text(s: &Settings, t: &Task, today: NaiveDate) -> (String, bool) {
     if t.overdue || t.due_day.is_some_and(|d| d < today) {
         let when = match t.due_day {
             Some(d) if d == today - Duration::days(1) => "yesterday".to_string(),
@@ -484,7 +570,7 @@ fn due_text(t: &Task, today: NaiveDate) -> (String, bool) {
         return (if when.is_empty() { "Overdue".into() } else { format!("Overdue · {when}") }, true);
     }
     match t.due_at {
-        Some(at) => (format!("Today, {}", local(at).format("%H:%M")), false),
+        Some(at) => (format!("Today, {}", s.hm(local(at))), false),
         None => ("Today".into(), false),
     }
 }
@@ -495,7 +581,7 @@ fn reminders(st: &mut State, today: NaiveDate, max: usize) -> (Vec<Node>, usize)
     let mut rows = vec![];
     for (i, t) in st.shown_tasks.iter().enumerate() {
         let done = st.done.contains(&task_key(t));
-        let (due, late) = due_text(t, today);
+        let (due, late) = due_text(&st.settings, t, today);
         let tick = hbox([check(done, late)]).class("chk").action(&format!("done:{i}")).tooltip(if done { "Done" } else { "Mark as done" });
         let title = if done { markup(format!("<s>{}</s>", escape(&t.title))).class("tertiary").class("rt") } else { label(&t.title).class("rt") };
         let mut due = label(if done { "Done".to_string() } else { due }).class("rs");
@@ -521,7 +607,7 @@ fn upcoming(st: &State, today: NaiveDate) -> Vec<Node> {
         .take(4)
         .map(|e| {
             let day = local(e.starts).format("%a %-d").to_string();
-            let when = if e.all_day { "All day".to_string() } else { local(e.starts).format("%H:%M").to_string() };
+            let when = if e.all_day { "All day".to_string() } else { st.settings.hm(local(e.starts)) };
             hbox([label(day).class("ud").width(44), bar(&e.paint(), 16), label(short(&e.title, 28)).class("ut").expand(), keep(when, 7).class("tertiary").class("ut")])
                 .spacing(9)
                 .class("up")
@@ -651,22 +737,32 @@ fn main() {
     st.load();
     redraw(&plugin, &mut st);
 
-    // The minute turning, and either file changing.
+    // Each second (when the bar shows them), the minute turning, and either file
+    // changing (checked every other second).
     let send = plugin.data();
+    let seconds = Arc::new(AtomicBool::new(st.settings.seconds));
+    let ticking = seconds.clone();
     std::thread::spawn(move || {
         let mut seen = (mtime(&agenda_path()), mtime(&tasks_path()));
         let mut minute = Local::now().timestamp() / 60;
+        let mut odd = false;
         loop {
-            std::thread::sleep(std::time::Duration::from_secs(2));
-            let now = (mtime(&agenda_path()), mtime(&tasks_path()));
-            if now != seen {
-                seen = now;
-                send(Tick::Files);
+            let ms = Local::now().timestamp_subsec_millis().min(999);
+            std::thread::sleep(std::time::Duration::from_millis(1000 - ms as u64 + 5));
+            odd = !odd;
+            if odd {
+                let now = (mtime(&agenda_path()), mtime(&tasks_path()));
+                if now != seen {
+                    seen = now;
+                    send(Tick::Files);
+                }
             }
             let m = Local::now().timestamp() / 60;
             if m != minute {
                 minute = m;
                 send(Tick::Minute);
+            } else if ticking.load(Ordering::Relaxed) {
+                send(Tick::Second);
             }
         }
     });
@@ -683,6 +779,9 @@ fn main() {
                 }
                 redraw(&plugin, &mut st);
             }
+            Input::Data(Tick::Second) => {
+                plugin.patch(ITEM, "time", [("text", fmt(Local::now(), &st.settings.time).into())]);
+            }
             Input::Data(Tick::Files) => {
                 st.load();
                 redraw(&plugin, &mut st);
@@ -693,6 +792,7 @@ fn main() {
             }
             Input::Settings(s) => {
                 st.settings = Settings::from(&s);
+                seconds.store(st.settings.seconds, Ordering::Relaxed);
                 st.load();
                 redraw(&plugin, &mut st);
             }
@@ -791,6 +891,25 @@ mod tests {
     }
 
     #[test]
+    fn clock_settings() {
+        let at = Local.with_ymd_and_hms(2026, 11, 11, 17, 8, 9).unwrap();
+        let s = |v: serde_json::Value| Settings::from(&v);
+        let bar = |st: &Settings| (fmt(at, &st.date), fmt(at, &st.time));
+        assert_eq!(bar(&s(serde_json::json!({ "hours": "24" }))), ("Wed Nov 11".into(), "17:08".into()));
+        assert_eq!(bar(&s(serde_json::json!({ "hours": 12, "date": "long" }))), ("Wednesday, November 11".into(), "5:08 PM".into()));
+        let secs = s(serde_json::json!({ "hours": "24", "seconds": true, "date": "iso" }));
+        assert!(secs.seconds);
+        assert_eq!(bar(&secs), ("2026-11-11".into(), "17:08:09".into()));
+        assert_eq!(bar(&s(serde_json::json!({ "hours": "24", "date": "none" }))), (String::new(), "17:08".into()));
+        let own = s(serde_json::json!({ "format": "%d.%m  %H.%M.%S" }));
+        assert_eq!(bar(&own), ("11.11".into(), "17.08.09".into()));
+        assert!(own.seconds, "a format of your own with seconds ticks too");
+        let bad = s(serde_json::json!({ "format": "%Q %H", "hours": "24" }));
+        assert_eq!(bar(&bad), ("Wed Nov 11".into(), "17:08".into()), "a bad format falls back");
+        assert_eq!(s(serde_json::json!({ "hours": "12" })).hm(at), "5:08 PM");
+    }
+
+    #[test]
     fn months_and_grids() {
         let nov = NaiveDate::from_ymd_opt(2026, 11, 1).unwrap();
         assert_eq!(grid_start(nov, false), NaiveDate::from_ymd_opt(2026, 10, 26).unwrap(), "a Sunday the 1st starts on Monday the 26th");
@@ -830,6 +949,6 @@ mod tests {
         .unwrap();
         let tasks = read_tasks(&t, NaiveDate::from_ymd_opt(2026, 11, 10).unwrap());
         assert_eq!(tasks.iter().map(|t| t.title.as_str()).collect::<Vec<_>>(), vec!["Invoice"]);
-        assert_eq!(due_text(&tasks[0], NaiveDate::from_ymd_opt(2026, 11, 10).unwrap()), ("Overdue · yesterday".to_string(), true));
+        assert_eq!(due_text(&Settings::from(&serde_json::json!({})), &tasks[0], NaiveDate::from_ymd_opt(2026, 11, 10).unwrap()), ("Overdue · yesterday".to_string(), true));
     }
 }

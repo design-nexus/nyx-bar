@@ -75,13 +75,48 @@ fn blocks(css: &str) -> Vec<(String, String)> {
         rest = rest[i + 2..].find("*/").map_or("", |j| &rest[i + 2 + j + 2..]);
     }
     text.push_str(rest);
+    // Blocks nest (`@keyframes x { from { … } }`): each top-level one ends at its
+    // matching brace, so the rules after it survive.
     let mut out = vec![];
     let mut cur = text.as_str();
     while let Some(open) = cur.find('{') {
-        let Some(close) = cur[open..].find('}') else { break };
+        let mut depth = 0;
+        let Some(close) = cur[open..].char_indices().find_map(|(i, c)| {
+            match c {
+                '{' => depth += 1,
+                '}' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        return Some(i);
+                    }
+                }
+                _ => {}
+            }
+            None
+        }) else {
+            break;
+        };
         out.push((cur[..open].trim().to_string(), cur[open + 1..open + close].to_string()));
         cur = &cur[open + close + 1..];
     }
+    out
+}
+
+/// `s` split on commas outside parentheses.
+fn args(s: &str) -> Vec<&str> {
+    let (mut out, mut depth, mut start) = (vec![], 0, 0);
+    for (i, c) in s.char_indices() {
+        match c {
+            '(' => depth += 1,
+            ')' => depth -= 1,
+            ',' if depth == 0 => {
+                out.push(s[start..i].trim());
+                start = i + 1;
+            }
+            _ => {}
+        }
+    }
+    out.push(s[start..].trim());
     out
 }
 
@@ -149,7 +184,7 @@ fn compound(s: &str) -> Option<Compound> {
 }
 
 /// `@theme_text`, `alpha(@theme_text, 0.06)`, `mix(@a, @b, 0.14)`, `shade(@x, 1.08)`,
-/// `#rrggbb`, `alpha(#rrggbb, 0.2)`, `none`/`transparent`.
+/// `#rgb`, `#rrggbb[aa]`, `rgb()`/`rgba()`, a few named colours, `none`/`transparent`.
 pub fn color(v: &str) -> Option<Value> {
     let v = v.trim();
     if v == "none" || v == "transparent" {
@@ -158,12 +193,46 @@ pub fn color(v: &str) -> Option<Value> {
     if let Some(name) = v.strip_prefix('@') {
         return Some(json!({ "t": name.strip_prefix("theme_").unwrap_or(name) }));
     }
-    if v.starts_with('#') {
-        return Some(json!({ "hex": v }));
+    if let Some(h) = v.strip_prefix('#') {
+        if !h.chars().all(|c| c.is_ascii_hexdigit()) {
+            return None;
+        }
+        return match h.len() {
+            3 => Some(json!({ "hex": format!("#{}", h.chars().flat_map(|c| [c, c]).collect::<String>()) })),
+            6 | 8 => Some(json!({ "hex": v })),
+            _ => None,
+        };
     }
-    let (f, args) = v.split_once('(')?;
-    let args: Vec<&str> = args.strip_suffix(')')?.split(',').map(str::trim).collect();
+    let named = match v.to_ascii_lowercase().as_str() {
+        "white" => Some("#ffffff"),
+        "black" => Some("#000000"),
+        "red" => Some("#ff0000"),
+        "green" => Some("#008000"),
+        "blue" => Some("#0000ff"),
+        "yellow" => Some("#ffff00"),
+        "orange" => Some("#ffa500"),
+        "gray" | "grey" => Some("#808080"),
+        _ => None,
+    };
+    if let Some(hex) = named {
+        return Some(json!({ "hex": hex }));
+    }
+    let (f, rest) = v.split_once('(')?;
+    let args = args(rest.strip_suffix(')')?);
     match (f.trim(), args.as_slice()) {
+        ("rgb" | "rgba", [r, g, b, a @ ..]) if a.len() <= 1 => {
+            let channel = |c: &str| -> Option<u8> {
+                match c.strip_suffix('%') {
+                    Some(p) => p.trim().parse::<f64>().ok().map(|p| (p.clamp(0.0, 100.0) * 2.55).round() as u8),
+                    None => c.parse::<f64>().ok().map(|n| n.clamp(0.0, 255.0).round() as u8),
+                }
+            };
+            let mut c = json!({ "hex": format!("#{:02x}{:02x}{:02x}", channel(r)?, channel(g)?, channel(b)?) });
+            if let Some(a) = a.first() {
+                c["a"] = json!(a.parse::<f64>().ok()?);
+            }
+            Some(c)
+        }
         ("alpha", [c, a]) => {
             let mut c = color(c)?;
             c["a"] = json!(a.parse::<f64>().ok()?);
@@ -214,6 +283,33 @@ fn line(v: &str) -> Option<Value> {
     Some(json!({ "w": w, "c": c, "dashed": style == "dashed" }))
 }
 
+/// One inset shadow as QML draws it: `("ring", {w, c})` or `("border-<side>", {w, c})`.
+fn inset(sh: &str) -> Option<(&'static str, Value)> {
+    let rest = sh.trim().strip_prefix("inset ")?;
+    let toks: Vec<&str> = rest.split_whitespace().collect();
+    let n = toks.iter().take_while(|t| px(t).is_some()).count();
+    let lens: Vec<f64> = toks[..n].iter().filter_map(|t| px(t)).collect();
+    let c = color(&toks[n..].join(" "))?;
+    let (x, y, blur, spread) = match lens.as_slice() {
+        [x, y] => (*x, *y, 0.0, 0.0),
+        [x, y, b] => (*x, *y, *b, 0.0),
+        [x, y, b, s] => (*x, *y, *b, *s),
+        _ => return None,
+    };
+    if blur != 0.0 {
+        return None;
+    }
+    let edge = |k, w: f64| Some((k, json!({ "w": w.abs(), "c": c.clone() })));
+    match (x, y, spread) {
+        (0.0, 0.0, s) if s > 0.0 => edge("ring", s),
+        (0.0, y, 0.0) if y < 0.0 => edge("border-bottom", y),
+        (0.0, y, 0.0) if y > 0.0 => edge("border-top", y),
+        (x, 0.0, 0.0) if x > 0.0 => edge("border-left", x),
+        (x, 0.0, 0.0) if x < 0.0 => edge("border-right", x),
+        _ => None,
+    }
+}
+
 fn declarations(body: &str) -> Map<String, Value> {
     let mut out = Map::new();
     for d in body.split(';').map(str::trim).filter(|d| !d.is_empty()) {
@@ -234,11 +330,17 @@ fn declarations(body: &str) -> Map<String, Value> {
                 n => n.parse::<i64>().ok().map(Value::from),
             },
             "box-shadow" if v == "none" => Some(json!({ "none": true })),
-            "box-shadow" => v.strip_prefix("inset 0 0 0 ").and_then(|r| {
-                let (w, c) = r.split_once(' ')?;
-                Some(json!({ "w": px(w)?, "c": color(c)? }))
-            }),
-            "border" | "border-top" | "border-left" => line(v),
+            "box-shadow" => {
+                // Inset shadows QML can draw: a ring (`inset 0 0 0 1px c`) or a line on
+                // one side (`inset 0 -2px 0 c`, the bottom).
+                for sh in args(v) {
+                    if let Some((key, val)) = inset(sh) {
+                        out.insert(key.into(), val);
+                    }
+                }
+                None
+            }
+            "border" | "border-top" | "border-right" | "border-bottom" | "border-left" => line(v),
             "-gtk-icon-transform" => v.strip_prefix("rotate(").and_then(|r| r.strip_suffix("deg)")).and_then(|d| d.parse::<f64>().ok()).map(Value::from),
             _ => None,
         };
@@ -281,6 +383,31 @@ mod tests {
         assert_eq!(r.len(), 7, ":first-child is left out");
         assert_eq!(r[5]["props"]["background-color"], json!({ "hex": "#a78bfa", "a": 0.22 }));
         assert_eq!(r[6]["props"]["background-color"], json!({ "t": "accent", "shade": 1.08 }));
+    }
+
+    #[test]
+    fn keyframes_colours_and_inset_shadows() {
+        let r = compile(
+            ".dot { color: @theme_warning; animation: pulse 1s infinite; }\n@keyframes pulse { from { opacity: 1; } to { opacity: 0.3; } }\n\
+             .after { color: #abc; }\n.rgb { background-color: rgba(255, 0, 0, 0.5); color: rgb(0%, 100%, 0%); }\n\
+             .named { color: white; }\n.nested { background-color: alpha(rgb(10, 20, 30), 0.2); }\n\
+             .under { box-shadow: inset 0 -2px 0 @theme_accent; }\n.edge { box-shadow: inset 3px 0 0 @theme_danger, inset 0 0 0 1px @nav_active; }\n\
+             .blur { box-shadow: inset 0 1px 2px black; }\n.side { border-bottom: 1px solid @theme_border; }",
+        );
+        let r = r.as_array().unwrap();
+        let props = |class: &str| r.iter().find(|x| x["sel"][0]["classes"][0] == class).map(|x| x["props"].clone());
+        assert_eq!(props("dot").unwrap()["color"], json!({ "t": "warning" }));
+        assert_eq!(props("after").unwrap()["color"], json!({ "hex": "#aabbcc" }), "rules after @keyframes survive");
+        assert_eq!(props("rgb").unwrap()["background-color"], json!({ "hex": "#ff0000", "a": 0.5 }));
+        assert_eq!(props("rgb").unwrap()["color"], json!({ "hex": "#00ff00" }));
+        assert_eq!(props("named").unwrap()["color"], json!({ "hex": "#ffffff" }));
+        assert_eq!(props("nested").unwrap()["background-color"], json!({ "hex": "#0a141e", "a": 0.2 }));
+        assert_eq!(props("under").unwrap()["border-bottom"], json!({ "w": 2.0, "c": { "t": "accent" } }));
+        let edge = props("edge").unwrap();
+        assert_eq!(edge["border-left"], json!({ "w": 3.0, "c": { "t": "danger" } }));
+        assert_eq!(edge["ring"], json!({ "w": 1.0, "c": { "t": "nav_active" } }));
+        assert!(props("blur").is_none(), "a blurred shadow isn't drawn");
+        assert_eq!(props("side").unwrap()["border-bottom"]["w"], 1.0);
     }
 
     #[test]

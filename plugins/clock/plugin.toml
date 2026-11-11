@@ -36,8 +36,16 @@ sizes = ["medium", "large", "compact"]
 default = true
 
 [settings]
-# strftime(3) format, in the bar. A double space splits the date (dim) from the time.
-format = "%a %b %-d  %H:%M"
+# The date in the bar: short ("Wed Nov 11"), long ("Wednesday, November 11"), numeric
+# ("11/11", in your locale's order), iso ("2026-11-11") or none.
+date = "short"
+# The clock: auto (12-hour where your locale uses one), 12 or 24.
+hours = "auto"
+# Seconds in the bar's time.
+seconds = false
+# A strftime(3) format of your own, in place of the three above. A double space splits
+# the date (dim) from the time. A format that can't be read is ignored.
+format = ""
 # The calendar: wide (the month beside the day's agenda) or compact (one column).
 layout = "wide"
 # monday or sunday.

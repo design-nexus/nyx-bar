@@ -3,7 +3,7 @@ name = "Panels"
 version = "0.2.0"
 author = "Design Nexus"
 license = "MIT"
-description = "The Notification Center bell (unread count, Do not disturb, a quick menu) and, if you want it, a Control Center button."
+description = "The Notification Center bell (unread count, Do not disturb, a quick menu) and the Control Center button."
 api_version = 1
 kinds = ["bar"]
 exec = ["nyx-bar-panels"]
@@ -26,5 +26,5 @@ default = true
 [[bar.items]]
 id = "control-center"
 name = "Control Center"
-description = "A button that opens Control Center's dashboard, lit while it's open."
+description = "A button that opens Control Center's dashboard."
 default = true
