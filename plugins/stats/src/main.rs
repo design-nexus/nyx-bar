@@ -461,6 +461,7 @@ fn main() {
     let mut every = plugin.setting_i64("every", 3).clamp(1, 60) as u64;
     let mut look = look_of(plugin.settings());
     let mut show_gpu = plugin.setting_bool("gpu", true);
+    let mut show_memory = plugin.setting_bool("memory", true);
     let tick = plugin.data();
     let interval = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(every));
     let i2 = interval.clone();
@@ -522,6 +523,11 @@ fn main() {
                             l = l.class("warning");
                         }
                         parts.push(l);
+                        if show_memory {
+                            let full = mem >= 90.0;
+                            parts.push(glyph("memory", if full { "warning" } else { "dim_text" }).margin(0, 0, 0, 4));
+                            parts.push(label(format!("{mem:.0}%")).class(if full { "warning" } else { "plain" }));
+                        }
                     }
                     Look::Text => {
                         parts.push(hbox([glyph("cpu", "dim_text"), label(format!("{cpu:.0}%")).class(if busy { "warning" } else { "plain" })]).spacing(4));
@@ -613,6 +619,7 @@ fn main() {
                 interval.store(every, std::sync::atomic::Ordering::Relaxed);
                 look = look_of(&st);
                 show_gpu = st.get("gpu").and_then(|v| v.as_bool()).unwrap_or(true);
+                show_memory = st.get("memory").and_then(|v| v.as_bool()).unwrap_or(true);
             }
             Input::Event(e) => match e.kind {
                 nyx_plugin_sdk::protocol::EventKind::PopoverOpen => popover_open = true,

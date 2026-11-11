@@ -44,7 +44,7 @@ fi
 
 say "Building Nyx Bar and its plugins (a few minutes the first time)"
 plugins=(workspaces clock weather system stats panels media tray launcher window privacy recording keyboard updates keepawake)
-pkgs=(-p nyx-bar -p nyx-plugin-cli)
+pkgs=(-p nyx-bar -p nyx-bar-backend -p nyx-plugin-cli)
 for p in "${plugins[@]}"; do pkgs+=(-p "nyx-bar-$p"); done
 (cd "$src" && cargo build --release --locked "${pkgs[@]}")
 target="${CARGO_TARGET_DIR:-$src/target}/release"
@@ -54,7 +54,7 @@ lib="$HOME/.local/lib/nyx/plugins"
 units="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
 mkdir -p "$bin" "$lib" "$units"
 # Replace files rather than writing into them, so running copies keep their old binary.
-for b in nyx-bar nyx-plugin; do
+for b in nyx-bar nyx-bar-backend nyx-plugin; do
   install -m 755 "$target/$b" "$bin/$b.new" && mv -f "$bin/$b.new" "$bin/$b"
 done
 
@@ -78,7 +78,20 @@ for dir in "$src"/plugins/*/; do
 done
 
 install -m 644 "$src/data/nyx-bar.service" "$units/nyx-bar.service"
+install -m 644 "$src/apps/bar-backend/data/nyx-bar-backend.service" "$units/nyx-bar-backend.service"
+# The Quickshell interface, for `nyx-bar --ui qml` where Nyx Shell's runtime (nyx-shell-qs)
+# is installed.
+data="${XDG_DATA_HOME:-$HOME/.local/share}"
+mkdir -p "$data/nyx-bar"
+rm -rf "$data/nyx-bar/qml.new"
+cp -r "$src/qml/Bar" "$data/nyx-bar/qml.new"
+rm -rf "$data/nyx-bar/qml" && mv "$data/nyx-bar/qml.new" "$data/nyx-bar/qml"
 systemctl --user daemon-reload 2>/dev/null || true
+if [[ $("$bin/nyx-bar" --ui) == qml ]]; then
+  say "Restarting the Quickshell bar"
+  systemctl --user restart nyx-bar-backend.service 2>/dev/null || true
+  systemctl --user restart nyx-shell-qs.service 2>/dev/null || true
+fi
 
 if systemctl --user is-active --quiet nyx-bar.service 2>/dev/null; then
   say "Installed. The running bar uses the new build after: systemctl --user restart nyx-bar"

@@ -4,6 +4,7 @@ members = [
     "crates/nyx-bar-core",
     "crates/nyx-bar-apps",
     "apps/bar",
+    "apps/bar-backend",
     "apps/plugin",
     "plugins/workspaces",
     "plugins/clock",

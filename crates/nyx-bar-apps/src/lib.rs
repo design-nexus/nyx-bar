@@ -17,10 +17,16 @@ impl App {
     /// An icon list for the bar's views: the app's symbolic icon, its own, then a generic
     /// one (the view shows the first the icon theme has).
     pub fn icons_symbolic_first(&self) -> String {
+        if self.icon.contains('/') {
+            return format!("{}|application-x-executable-symbolic", self.icon);
+        }
         format!("{0}-symbolic|{0}|application-x-executable-symbolic", self.icon)
     }
 
     pub fn icons(&self) -> String {
+        if self.icon.contains('/') {
+            return format!("{}|application-x-executable", self.icon);
+        }
         format!("{0}|{0}-symbolic|application-x-executable", self.icon)
     }
 }

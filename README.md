@@ -17,6 +17,12 @@ turned on. Try the bar with `nyx-bar`; run it at login with
 
 It needs GTK 4, gtk4-layer-shell, librsvg, bubblewrap and xdg-dbus-proxy.
 
+The bar has two interfaces with the same plugins, layout and look: GTK (`nyx-bar`), and
+Quickshell (`nyx-bar-backend`, which runs the plugins, with the bar's QML in `qml/Bar`
+drawn by Nyx Shell's `nyx-shell-qs`). NyxOS runs the Quickshell one. Elsewhere,
+`nyx-bar --ui qml` switches to it where Nyx Shell is installed, `nyx-bar --ui gtk`
+switches back, and `nyx-bar --ui` says which is on.
+
 ## What's in it
 
 | Plugin | Items |
@@ -35,7 +41,7 @@ It needs GTK 4, gtk4-layer-shell, librsvg, bubblewrap and xdg-dbus-proxy.
 | `nyx.keepawake` | keep the computer awake (off by default) |
 | `nyx.tray` | other apps' tray icons and menus, the rest in a drawer |
 | `nyx.system` | network, Bluetooth, volume, battery: each opens its Control Center page (right-click: the dashboard) |
-| `nyx.panels` | the Notification Center bell (right-click: Do not disturb, clear), and a Control Center button (off by default) |
+| `nyx.panels` | the Notification Center bell (right-click: Do not disturb, clear), and the Control Center button |
 
 ## Plugins
 
@@ -60,9 +66,9 @@ and CPU limits. Writing one: [docs/plugins.md](docs/plugins.md).
 ```toml
 left = [["nyx.launcher", "nyx.workspaces"], "nyx.window"]
 center = [["nyx.clock"]]
-right = ["nyx.privacy", "nyx.recording", ["nyx.media"], ["nyx.weather", "nyx.stats"],
-         "nyx.updates", "nyx.keyboard", "nyx.keepawake", "nyx.tray",
-         ["nyx.system"], ["nyx.panels/notifications"]]
+right = ["nyx.privacy", "nyx.recording", "nyx.keyboard", ["nyx.media"], "*",
+         ["nyx.weather", "nyx.stats"], "nyx.tray", "nyx.updates", "nyx.keepawake",
+         ["nyx.system"], ["nyx.panels/notifications"], ["nyx.panels/control-center"]]
 size = "default"
 
 [plugins."nyx.clock"]
@@ -73,13 +79,18 @@ right = ["nyx.clock"]
 ```
 
 - Entries in brackets share one pill (`["nyx.weather", "nyx.stats"]`); the pill lights
-  while one of them is open. `"|"` draws a thin divider.
+  while one of them is open. `"|"` draws a thin divider. `"*"` is where enabled items
+  the file doesn't place go (another plugin's, AI Hub's).
+- The file is written on first start as the layout above, commented out, so NyxOS's
+  layout applies until you change it. The very first bar's file, never edited, is
+  replaced by that template on start (kept as `bar.toml.old`).
 - `size` is `compact` (28 px), `default` (32), `cozy` (36) or `spacious` (40); an exact
   `height` wins over it. Settings → Nyx Bar sets the size, the status pill, the
   calendar's layout and the workspaces' look.
 
 Which items show at all is in `~/.config/nyx/plugins.toml` (`nyx plugin configure`).
-Restyle anything in `~/.config/nyx/bar.css`.
+Restyle anything in `~/.config/nyx/bar.css` (the GTK interface; the Quickshell one
+doesn't read it yet).
 
 ## Build
 
@@ -89,7 +100,8 @@ cargo test --workspace
 ```
 
 `nyx-bar --only HEADLESS-1` runs a separate test copy on one output, with
-`NYX_BAR_DEBUG=1` for what it decides. The plan is in [docs/PLAN.md](docs/PLAN.md).
+`NYX_BAR_DEBUG=1` for what it decides; `NYX_BAR_ONLY=HEADLESS-1 nyx-bar-backend` does the
+same for the Quickshell interface, with `NYX_SHELL_SCREEN=HEADLESS-1` for `nyx-shell-qs`. The plan is in [docs/PLAN.md](docs/PLAN.md).
 
 ## License
 

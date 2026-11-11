@@ -179,6 +179,111 @@ impl Config {
     }
 }
 
+/// The sections the first bar wrote into every new `bar.toml`, uncommented.
+const FIRST_DEFAULT: [(&str, &[&str]); 3] = [
+    ("left", &["nyx.workspaces"]),
+    ("center", &["nyx.clock"]),
+    (
+        "right",
+        &[
+            "nyx.tray",
+            "nyx.media",
+            "nyx.weather",
+            "nyx.stats",
+            "nyx.system/network",
+            "nyx.system/bluetooth",
+            "nyx.system/volume",
+            "nyx.system/battery",
+            "nyx.panels/notifications",
+            "nyx.panels/control-center",
+        ],
+    ),
+];
+
+/// Whether a `bar.toml` is the first bar's layout, never changed: it would keep the
+/// current layout (and NyxOS's defaults) from ever applying.
+pub fn is_first_default(text: &str) -> bool {
+    let Ok(t) = text.parse::<toml::Table>() else { return false };
+    let sections = |k: &str| -> Option<Vec<String>> { t.get(k)?.as_array()?.iter().map(|v| v.as_str().map(String::from)).collect() };
+    t.keys().all(|k| matches!(k.as_str(), "left" | "center" | "right"))
+        && FIRST_DEFAULT.iter().all(|(k, want)| sections(k).is_some_and(|got| got == *want))
+}
+
+/// The template a new `bar.toml` starts as: the current layout, commented out.
+pub fn template() -> String {
+    std::iter::once("# Your bar layout: uncomment and change what you want (NyxOS's defaults apply otherwise).\n".to_string())
+        .chain(nyx_plugin::layout::DEFAULT_BAR.lines().map(|l| if l.is_empty() { "\n".to_string() } else { format!("# {l}\n") }))
+        .collect()
+}
+
+/// Before a bar starts: the user's file as a commented template when there's none, and the
+/// first bar's file, never changed, giving way to it (kept as bar.toml.old).
+pub fn prepare_user_file() {
+    let path = Config::path();
+    if std::fs::read_to_string(&path).is_ok_and(|t| is_first_default(&t)) {
+        let _ = std::fs::rename(&path, path.with_extension("toml.old"));
+        eprintln!("nyx-bar: {} was the first bar's layout, never changed; now the current one (the old file is bar.toml.old)", path.display());
+    }
+    if !path.exists() {
+        let _ = nyx_plugin::paths::write_atomic(&path, &template());
+    }
+}
+
+fn entry_json(e: &Entry) -> serde_json::Value {
+    match e {
+        Entry::One(s) => s.clone().into(),
+        Entry::Group(g) => g.clone().into(),
+    }
+}
+
+/// What `nyx-bar --layout-json` prints, for Settings' editor: the layout in use (through
+/// every layer), whether the user's file sets it, a name for every entry, and the enabled
+/// parts it doesn't place.
+pub fn layout_json(layers: &nyx_config::Layers, plugins: &[nyx_plugin::Plugin], state: &nyx_plugin::State) -> serde_json::Value {
+    use nyx_plugin::Kind;
+    let config = Config::load_layered(layers).unwrap_or_default();
+    let user = layers.read(nyx_config::Layer::User, DOMAIN.name).unwrap_or_default();
+    let sections = [&config.sections.left, &config.sections.center, &config.sections.right];
+    let placed: Vec<String> = sections.iter().filter_map(|s| s.as_ref()).flatten().flat_map(|e| match e {
+        Entry::One(s) => vec![s.clone()],
+        Entry::Group(g) => g.clone(),
+    }).collect();
+    let mut names = serde_json::Map::new();
+    names.insert("|".into(), "Divider".into());
+    names.insert(OTHERS.into(), "Other plugins".into());
+    let mut unplaced = vec![];
+    for p in plugins.iter().filter(|p| p.manifest.has_kind(Kind::Bar)) {
+        let m = &p.manifest;
+        let parts = m.parts(Kind::Bar);
+        names.insert(m.id.clone(), m.name.clone().into());
+        for part in &parts {
+            let entry = format!("{}/{}", m.id, part.id);
+            let name = if parts.len() > 1 { format!("{}: {}", m.name, part.name) } else { m.name.clone() };
+            names.insert(entry, name.into());
+        }
+        if !state.runs(p, Kind::Bar) {
+            continue;
+        }
+        let enabled = state.enabled_parts(m, Kind::Bar);
+        if placed.contains(&m.id) {
+            continue;
+        }
+        for part in enabled {
+            let entry = format!("{}/{}", m.id, part);
+            if !placed.contains(&entry) {
+                unplaced.push(if parts.len() > 1 { entry } else { m.id.clone() });
+            }
+        }
+    }
+    let section = |s: &Option<Vec<Entry>>| -> serde_json::Value { s.iter().flatten().map(entry_json).collect::<Vec<_>>().into() };
+    serde_json::json!({
+        "sections": { "left": section(sections[0]), "center": section(sections[1]), "right": section(sections[2]) },
+        "user_sets_layout": SECTIONS.iter().any(|s| user.contains_key(*s)),
+        "names": names,
+        "unplaced": unplaced,
+    })
+}
+
 /// An item a plugin shows, for arranging.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Shown {
@@ -191,6 +296,9 @@ pub struct Shown {
 }
 
 pub const SECTIONS: [&str; 3] = ["left", "center", "right"];
+
+/// The entry standing for whatever the layout doesn't place.
+pub const OTHERS: &str = "*";
 
 /// A placed item: its plugin and item ids.
 pub type Placed = (String, String);
@@ -225,10 +333,13 @@ pub fn arrange(sections: &[Vec<Entry>; 3], shown: &[Shown]) -> [Vec<Slot>; 3] {
         }
         got
     };
+    // Where a section's `"*"` stands: what the layout doesn't place goes there.
+    let mut anchors: [Option<usize>; 3] = [None; 3];
     for (si, entries) in sections.iter().enumerate() {
         for e in entries {
             match e {
                 _ if e.is_divider() => out[si].push(Slot::Divider),
+                Entry::One(e) if e == OTHERS => anchors[si] = Some(out[si].len()),
                 Entry::One(e) => out[si].extend(take(e, &mut placed).into_iter().map(Slot::Item)),
                 Entry::Group(g) => {
                     let items: Vec<Placed> = g.iter().flat_map(|e| take(e, &mut placed)).collect();
@@ -239,18 +350,20 @@ pub fn arrange(sections: &[Vec<Entry>; 3], shown: &[Shown]) -> [Vec<Slot>; 3] {
             }
         }
     }
-    // What the layout doesn't place goes to its plugin's section on the side nearer the
-    // middle: the default items keep the screen's edges (the right section's extras go
-    // before them, the left's after).
-    let mut extra_right = vec![];
+    // What the layout doesn't place goes to its plugin's section, at its "*"; without
+    // one, on the side nearer the middle, so the default items keep the screen's edges
+    // (the right section's extras go before them, the others' after).
+    let mut extra: [Vec<Slot>; 3] = Default::default();
     for (i, s) in shown.iter().enumerate() {
         if !placed[i] {
             let si = SECTIONS.iter().position(|x| *x == s.section).unwrap_or(2);
-            let slot = Slot::Item((s.plugin.clone(), s.item.clone()));
-            if si == 2 { extra_right.push(slot) } else { out[si].push(slot) }
+            extra[si].push(Slot::Item((s.plugin.clone(), s.item.clone())));
         }
     }
-    out[2].splice(0..0, extra_right);
+    for (si, slots) in extra.into_iter().enumerate() {
+        let at = anchors[si].unwrap_or(if si == 2 { 0 } else { out[si].len() });
+        out[si].splice(at..at, slots);
+    }
     for slots in out.iter_mut() {
         let mut tidy: Vec<Slot> = vec![];
         for slot in slots.drain(..) {
@@ -377,6 +490,16 @@ mod tests {
     }
 
     #[test]
+    fn the_first_bars_file_gives_way_unless_changed() {
+        let first = include_str!("testdata/first-bar.toml");
+        assert!(is_first_default(first), "as the first bar wrote it");
+        assert!(!is_first_default(&first.replace("\"nyx.media\",", "")), "an entry taken out");
+        assert!(!is_first_default(&format!("height = 36\n{first}")), "a setting added");
+        assert!(!is_first_default(&template()), "the current template, all comments");
+        assert!(!is_first_default(nyx_plugin::layout::DEFAULT_BAR), "the current layout");
+    }
+
+    #[test]
     fn arranging() {
         let sections = [e(&["ws"]), vec![], e(&["sys/volume", "clock", "sys"])];
         let items = vec![
@@ -391,6 +514,19 @@ mod tests {
         assert_eq!(names(&l), vec!["ws/workspaces", "acme.ping/ping"]);
         assert!(c.is_empty());
         assert_eq!(names(&r), vec!["tray/tray-1", "sys/volume", "clock/time", "sys/network"], "what isn't placed goes before the placed items");
+
+        let sections = [e(&["ws"]), vec![], e(&["media", "*", "weather", "sys"])];
+        let items = vec![
+            shown("sys", "volume", "volume", "right"),
+            shown("weather", "now", "main", "right"),
+            shown("media", "media", "main", "right"),
+            shown("ai", "hub", "main", "right"),
+            shown("ws", "workspaces", "main", "left"),
+            shown("acme.ping", "ping", "main", "left"),
+        ];
+        let [l, _, r] = arrange(&sections, &items);
+        assert_eq!(names(&r), vec!["media/media", "ai/hub", "weather/now", "sys/volume"], "at the \"*\"");
+        assert_eq!(names(&l), vec!["ws/workspaces", "acme.ping/ping"], "no \"*\" on the left: after the placed items");
     }
 
     #[test]

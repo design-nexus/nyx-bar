@@ -26,5 +26,5 @@ default = true
 [[bar.items]]
 id = "control-center"
 name = "Control Center"
-description = "Off by default: the status icons open Control Center."
-default = false
+description = "A button that opens Control Center's dashboard, lit while it's open."
+default = true

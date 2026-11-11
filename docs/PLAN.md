@@ -246,7 +246,7 @@ units = "imperial"
 right = ["nyx.clock"]
 ```
 
-An entry is either a plugin (all its enabled items) or `plugin/item`. Enabled items that `bar.toml` doesn't place go to their manifest's `section`, on its side nearer the middle: before the placed items on the right, after them on the left, so the defaults keep the screen's edges.
+An entry is either a plugin (all its enabled items) or `plugin/item`. Enabled items that `bar.toml` doesn't place go to their manifest's `section`, where its `"*"` entry stands (the default layout has one just left of weather); a section without one puts them on its side nearer the middle, before the placed items on the right and after them elsewhere, so the defaults keep the screen's edges.
 
 **Host D-Bus interface** `io.github.design_nexus.nyx.Bar1`:
 

@@ -1,0 +1,27 @@
+[package]
+name = "nyx-bar-backend"
+version = "0.1.0"
+description = "Nyx Bar without GTK: its plugins and layout, for its Quickshell interface"
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "nyx-bar-backend"
+path = "src/main.rs"
+
+[dependencies]
+async-channel.workspace = true
+gio = "0.22"
+glib = "0.22"
+nyx-bar-core = { path = "../../crates/nyx-bar-core" }
+nyx-config.workspace = true
+nyx-desktop = { git = "https://github.com/design-nexus/nyx-core.git", rev = "51d82b7be343416339f87b10d6bb633a437b7c35" }
+nyx-plugin.workspace = true
+nyx-plugin-host.workspace = true
+nyx-plugin-protocol.workspace = true
+nyx-theme-core = { git = "https://github.com/design-nexus/nyx-design.git", rev = "034fabeb023194079057dfb7751d7e8adce8b0bd" }
+nyx-ui-link = { git = "https://github.com/design-nexus/nyx-core.git", rev = "51d82b7be343416339f87b10d6bb633a437b7c35" }
+serde_json.workspace = true
+toml.workspace = true

@@ -111,14 +111,14 @@ fn grid(open: bool) -> Node {
     let cell = |x: f64, y: f64| Draw::Rect {
         x,
         y,
-        w: 5.6,
-        h: 5.6,
-        radius: 1.8,
+        w: 4.8,
+        h: 4.8,
+        radius: 1.5,
         fill: open.then(|| color("accent")),
         stroke: Some(color(if open { "accent" } else { "text" })),
-        width: Some(1.4),
+        width: Some(1.25),
     };
-    vector([0.0, 0.0, 16.0, 16.0], vec![cell(1.6, 1.6), cell(8.8, 1.6), cell(1.6, 8.8), cell(8.8, 8.8)]).size(16, 16)
+    vector([0.0, 0.0, 16.0, 16.0], vec![cell(2.4, 2.4), cell(8.8, 2.4), cell(2.4, 8.8), cell(8.8, 8.8)]).size(16, 16)
 }
 
 fn main() {

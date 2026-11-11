@@ -1420,6 +1420,7 @@ dependencies = [
  "nyx-plugin-protocol",
  "nyx-plugin-view",
  "nyx-theme",
+ "nyx-ui-link",
  "serde_json",
  "toml",
 ]
@@ -1429,6 +1430,25 @@ name = "nyx-bar-apps"
 version = "0.1.0"
 dependencies = [
  "tempfile",
+]
+
+[[package]]
+name = "nyx-bar-backend"
+version = "0.1.0"
+dependencies = [
+ "async-channel",
+ "gio",
+ "glib",
+ "nyx-bar-core",
+ "nyx-config",
+ "nyx-desktop",
+ "nyx-plugin",
+ "nyx-plugin-host",
+ "nyx-plugin-protocol",
+ "nyx-theme-core",
+ "nyx-ui-link",
+ "serde_json",
+ "toml",
 ]
 
 [[package]]
@@ -1719,6 +1739,16 @@ dependencies = [
  "serde",
  "serde_json",
  "toml",
+ "zbus",
+]
+
+[[package]]
+name = "nyx-ui-link"
+version = "0.1.0"
+source = "git+https://github.com/design-nexus/nyx-core.git?rev=51d82b7be343416339f87b10d6bb633a437b7c35#51d82b7be343416339f87b10d6bb633a437b7c35"
+dependencies = [
+ "libc",
+ "serde_json",
 ]
 
 [[package]]

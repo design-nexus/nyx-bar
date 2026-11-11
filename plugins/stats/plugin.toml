@@ -36,5 +36,7 @@ default = true
 every = 3
 # In the bar: spark (a CPU graph), text (CPU, memory, temperature) or rings.
 look = "spark"
+# With the spark: memory in use beside it.
+memory = true
 # Show the GPU when one reports its load.
 gpu = true
