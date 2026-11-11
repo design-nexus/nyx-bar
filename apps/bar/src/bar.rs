@@ -112,15 +112,55 @@ impl Shared {
     }
 }
 
+/// The sections the first bar wrote into every new `bar.toml`, uncommented.
+const FIRST_DEFAULT: [(&str, &[&str]); 3] = [
+    ("left", &["nyx.workspaces"]),
+    ("center", &["nyx.clock"]),
+    (
+        "right",
+        &[
+            "nyx.tray",
+            "nyx.media",
+            "nyx.weather",
+            "nyx.stats",
+            "nyx.system/network",
+            "nyx.system/bluetooth",
+            "nyx.system/volume",
+            "nyx.system/battery",
+            "nyx.panels/notifications",
+            "nyx.panels/control-center",
+        ],
+    ),
+];
+
+/// Whether a `bar.toml` is the first bar's layout, never changed: it would keep the
+/// current layout (and NyxOS's defaults) from ever applying.
+fn is_first_default(text: &str) -> bool {
+    let Ok(t) = text.parse::<toml::Table>() else { return false };
+    let sections = |k: &str| -> Option<Vec<String>> { t.get(k)?.as_array()?.iter().map(|v| v.as_str().map(String::from)).collect() };
+    t.keys().all(|k| matches!(k.as_str(), "left" | "center" | "right"))
+        && FIRST_DEFAULT.iter().all(|(k, want)| sections(k).is_some_and(|got| got == *want))
+}
+
+/// The template a new `bar.toml` starts as: the current layout, commented out.
+fn template() -> String {
+    std::iter::once("# Your bar layout: uncomment and change what you want (NyxOS's defaults apply otherwise).\n".to_string())
+        .chain(nyx_plugin::layout::DEFAULT_BAR.lines().map(|l| if l.is_empty() { "\n".to_string() } else { format!("# {l}\n") }))
+        .collect()
+}
+
 pub fn start(app: &gtk::Application, only: Option<String>) {
     // A template to edit, commented out: what's set in the user's file wins over NyxOS's
-    // defaults, so nothing is set until the user sets it.
+    // defaults, so nothing is set until the user sets it. The first bar's file, never
+    // edited, gives way to it (kept as bar.toml.old).
     let path = Config::path();
+    let first = std::fs::read_to_string(&path).is_ok_and(|t| is_first_default(&t));
+    if first {
+        let _ = std::fs::rename(&path, path.with_extension("toml.old"));
+        eprintln!("nyx-bar: {} was the first bar's layout, never changed; now the current one (the old file is bar.toml.old)", path.display());
+    }
     if !path.exists() {
-        let template: String = std::iter::once("# Your bar layout: uncomment and change what you want (NyxOS's defaults apply otherwise).\n".to_string())
-            .chain(nyx_plugin::layout::DEFAULT_BAR.lines().map(|l| if l.is_empty() { "\n".to_string() } else { format!("# {l}\n") }))
-            .collect();
-        let _ = paths::write_atomic(&path, &template);
+        let _ = paths::write_atomic(&path, &template());
     }
     let config = Config::load_layered(&nyx_config::Layers::standard()).unwrap_or_else(|e| {
         eprintln!("nyx-bar: {e}; using the default layout");
@@ -1389,5 +1429,20 @@ fn dump(w: &gtk::Widget, depth: usize) {
     while let Some(ch) = c {
         dump(&ch, depth + 1);
         c = ch.next_sibling();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_first_bars_file_gives_way_unless_changed() {
+        let first = include_str!("testdata/first-bar.toml");
+        assert!(is_first_default(first), "as the first bar wrote it");
+        assert!(!is_first_default(&first.replace("\"nyx.media\",", "")), "an entry taken out");
+        assert!(!is_first_default(&format!("height = 36\n{first}")), "a setting added");
+        assert!(!is_first_default(&template()), "the current template, all comments");
+        assert!(!is_first_default(nyx_plugin::layout::DEFAULT_BAR), "the current layout");
     }
 }

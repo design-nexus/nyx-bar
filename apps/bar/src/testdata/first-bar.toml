@@ -1,0 +1,35 @@
+# Nyx Bar layout. Entries are plugins ("nyx.clock") or one of their items
+# ("nyx.system/volume"). Which items show at all is chosen with `nyx plugin configure`;
+# enabled items this file doesn't place go to the section their plugin asks for.
+left = ["nyx.workspaces"]
+center = ["nyx.clock"]
+right = [
+    "nyx.tray",
+    "nyx.media",
+    "nyx.weather",
+    "nyx.stats",
+    "nyx.system/network",
+    "nyx.system/bluetooth",
+    "nyx.system/volume",
+    "nyx.system/battery",
+    "nyx.panels/notifications",
+    "nyx.panels/control-center",
+]
+
+# Bar height in logical pixels.
+# height = 32
+
+# The bar draws with GTK's cairo renderer, which uses far less memory. For the GPU one:
+# renderer = "gpu"
+
+# Settings for one plugin:
+# [plugins."nyx.clock"]
+# format = "%a %b %-d  %H:%M"
+
+# Limits for one plugin (third-party plugins get strict defaults):
+# [plugins."acme.ping".limits]
+# memory = "256M"
+
+# A different layout on one monitor (connector or make|model|serial):
+# [monitors."HDMI-A-1"]
+# right = ["nyx.clock"]
