@@ -35,4 +35,4 @@ default = true
 
 [settings]
 # The longest the title can be in the bar, in characters.
-max_chars = 32
+max_chars = 22

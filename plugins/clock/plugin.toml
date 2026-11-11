@@ -1,23 +1,26 @@
 id = "nyx.clock"
 name = "Clock"
-version = "0.1.0"
+version = "0.2.0"
 author = "Design Nexus"
 license = "MIT"
-description = "The time and date, with this month's calendar."
+description = "The date and time with your next event; click for the month, the day's agenda and today's reminders."
 api_version = 1
 kinds = ["bar", "desktop"]
-exec = ["sh", "clock.sh"]
-needs = ["date"]
+exec = ["nyx-bar-clock"]
+
+[permissions]
+# Documentation for this trusted plugin: Nyx Calendar's and Nyx Reminders' published files.
+read = ["~/.local/share/nyx-calendar/agenda.sqlite", "~/.local/share/nyx-reminders/tasks.sqlite"]
+host_commands = [["nyx-calendar"]]
 
 [bar]
-mode = "interval"
-interval = 60
+mode = "stream"
 section = "center"
 
 [[bar.items]]
 id = "time"
 name = "Time and date"
-description = "Click for this month's calendar."
+description = "Click for the calendar: the month, the day's agenda and today's reminders."
 default = true
 
 [desktop]
@@ -33,8 +36,20 @@ sizes = ["medium", "large", "compact"]
 default = true
 
 [settings]
-# strftime(3) format, in the bar.
+# strftime(3) format, in the bar. A double space splits the date (dim) from the time.
 format = "%a %b %-d  %H:%M"
+# The calendar: wide (the month beside the day's agenda) or compact (one column).
+layout = "wide"
+# monday or sunday.
+week_start = "monday"
+# The next event beside the time.
+next_event = true
+# Calendars to show by name; empty shows them all.
+calendars = []
+# Holidays from holiday calendars.
+holidays = true
+# Reminder lists to show by name; empty shows them all.
+reminder_lists = []
 # The desktop clock's time and date.
 time_format = "%H:%M"
 date_format = "%A, %B %-d"

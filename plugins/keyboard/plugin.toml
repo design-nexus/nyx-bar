@@ -1,0 +1,28 @@
+id = "nyx.keyboard"
+name = "Keyboard layout"
+version = "0.1.0"
+author = "Design Nexus"
+license = "MIT"
+description = "The keyboard layout in use, when there's more than one. Click for the next; right-click to pick one."
+api_version = 1
+kinds = ["bar"]
+exec = ["nyx-bar-keyboard"]
+needs = ["hyprctl"]
+
+[permissions]
+# Documentation for this trusted plugin; a third-party copy would need these.
+host_commands = [["hyprctl", "switchxkblayout", "all", "next"]]
+
+[bar]
+mode = "stream"
+section = "right"
+
+[[bar.items]]
+id = "keyboard"
+name = "Keyboard layout"
+description = "Shown when more than one layout is set up."
+default = true
+
+[settings]
+# Show the layout even when there's only one.
+always = false

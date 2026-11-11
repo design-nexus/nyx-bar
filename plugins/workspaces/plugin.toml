@@ -3,7 +3,7 @@ name = "Workspaces"
 version = "0.1.0"
 author = "Design Nexus"
 license = "MIT"
-description = "Hyprland's workspaces on each monitor: click to go to one, scroll to move along."
+description = "Hyprland's workspaces on each monitor: click to go to one, scroll to move along, hover to see its windows."
 api_version = 1
 kinds = ["bar"]
 exec = ["nyx-bar-workspaces"]
@@ -19,6 +19,8 @@ name = "Workspaces"
 default = true
 
 [settings]
+# pills (the active one holds its windows' icons), numbers, icons, dots or underline.
+look = "pills"
 # Workspaces always shown; busier ones beyond this appear when they have windows.
 count = 5
 # Wrap from the last workspace to the first when scrolling.

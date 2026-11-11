@@ -1,0 +1,12 @@
+[package]
+name = "nyx-bar-weather"
+version = "0.1.0"
+description = "Nyx Bar plugin: Nyx Weather's conditions, with the next hours, five days and alerts"
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+nyx-plugin-sdk.workspace = true
+serde_json.workspace = true

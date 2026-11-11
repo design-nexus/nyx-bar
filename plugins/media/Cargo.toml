@@ -8,5 +8,6 @@ authors.workspace = true
 repository.workspace = true
 
 [dependencies]
-nyx-plugin-sdk = { workspace = true, features = ["mpris"] }
+nyx-plugin-sdk = { workspace = true, features = ["mpris", "dbus"] }
+zbus.workspace = true
 serde_json.workspace = true

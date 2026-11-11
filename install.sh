@@ -43,7 +43,7 @@ if ! command -v cargo >/dev/null; then
 fi
 
 say "Building Nyx Bar and its plugins (a few minutes the first time)"
-plugins=(workspaces system stats panels media tray)
+plugins=(workspaces clock weather system stats panels media tray launcher window privacy recording keyboard updates keepawake)
 pkgs=(-p nyx-bar -p nyx-plugin-cli)
 for p in "${plugins[@]}"; do pkgs+=(-p "nyx-bar-$p"); done
 (cd "$src" && cargo build --release --locked "${pkgs[@]}")

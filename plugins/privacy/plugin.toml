@@ -1,0 +1,24 @@
+id = "nyx.privacy"
+name = "Privacy"
+version = "0.1.0"
+author = "Design Nexus"
+license = "MIT"
+description = "Dots while an app uses the microphone (amber), camera (green) or shares the screen (violet); click to see which and mute or stop it."
+api_version = 1
+kinds = ["bar"]
+exec = ["nyx-bar-privacy"]
+needs = ["pw-dump"]
+
+[bar]
+mode = "stream"
+section = "right"
+
+[[bar.items]]
+id = "privacy"
+name = "Privacy dots"
+description = "Shown only while the microphone, camera or screen sharing is in use."
+default = true
+
+[settings]
+# Apps (their name or program) whose microphone use doesn't count, such as level meters.
+ignore = ["pavucontrol", "PulseAudio Volume Control", "cava", "easyeffects"]

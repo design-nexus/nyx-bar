@@ -1,0 +1,9 @@
+/* Plugin CSS is scoped to this plugin's items and popover. */
+.cell {
+  padding: 10px 2px 8px;
+  border-radius: 9px;
+}
+
+.cell:hover {
+  background-color: alpha(@theme_text, 0.07);
+}

@@ -1,36 +1,77 @@
-/* Plugin CSS is scoped to this plugin's items. */
-button.workspace {
+/* Plugin CSS is scoped to this plugin's items. Five looks (the `look` setting). */
+.ws {
+  min-height: 20px;
   min-width: 22px;
-  min-height: 22px;
-  padding: 0 4px;
-  margin: 0 1px;
+  padding: 0 5px;
   border-radius: 7px;
-  background: none;
-  box-shadow: none;
+  font-size: 12px;
   font-weight: 500;
   transition: background-color 120ms ease, color 120ms ease;
 }
 
-button.workspace:hover {
-  background-color: @row_hover;
+.ws:hover {
+  background-color: alpha(@theme_text, 0.08);
 }
 
-button.workspace.dim {
-  color: alpha(@theme_text, 0.45);
+.ws.dim { color: @theme_text_tertiary; }
+.ws.busy { color: @theme_text; }
+.ws.urgent { color: @theme_danger; }
+
+/* Pills: the active workspace is an accent pill with its windows' icons; the others are
+ * a number over a dot per window. */
+.look-pills .ws-pill .pips {
+  font-size: 7px;
+  min-height: 0;
+  margin-top: -3px;
+  opacity: 0.6;
 }
 
-button.workspace.active {
+.look-pills .ws.active {
+  padding: 0 9px 0 8px;
+  background-color: @theme_accent;
+  color: @theme_on_accent;
+}
+
+.look-pills .ws.active .ws-num { font-weight: 700; }
+.look-pills .ws.active image { color: @theme_on_accent; }
+
+.look-pills .ws.urgent .pips {
+  opacity: 1;
+}
+
+/* Numbers, tinted (the look before the redesign). */
+.look-numbers .ws.dim { color: alpha(@theme_text, 0.45); }
+.look-numbers .ws.active {
   background-color: alpha(@theme_accent, 0.22);
   color: @theme_accent;
   font-weight: 700;
 }
+.look-numbers .ws.urgent { background-color: alpha(@theme_danger, 0.16); }
 
-button.workspace.urgent {
-  color: @theme_danger;
-  animation: urgent-pulse 1.2s ease-in-out infinite;
+/* Busy workspaces as their apps' icons. */
+.look-icons .ws { padding: 0 7px; }
+.look-icons .ws .ws-num { color: @theme_dim_text; font-size: 11.5px; font-weight: 600; margin-right: 2px; }
+.look-icons .ws.active { background-color: @nav_active; }
+.look-icons .ws.active .ws-num { color: @theme_accent; }
+.look-icons .ws.urgent { box-shadow: inset 0 0 0 1.5px alpha(@theme_danger, 0.7); }
+
+/* Dots, the active one stretched. */
+.look-dots .ws-dot {
+  min-width: 6px;
+  min-height: 6px;
+  padding: 0;
+  border-radius: 3px;
+  background-color: alpha(@theme_text, 0.22);
 }
+.look-dots .ws-dot.busy { background-color: @theme_dim_text; }
+.look-dots .ws-dot.active { min-width: 18px; background-color: @theme_accent; }
+.look-dots .ws-dot.urgent { background-color: @theme_danger; }
 
-@keyframes urgent-pulse {
-  from { background-color: alpha(@theme_danger, 0.10); }
-  to { background-color: alpha(@theme_danger, 0.28); }
+/* Omarchy's numbers with an accent underline. */
+.look-underline .ws { border-radius: 0; background: none; }
+.look-underline .ws.busy { color: @theme_dim_text; }
+.look-underline .ws.active {
+  color: @theme_text;
+  font-weight: 700;
+  box-shadow: inset 0 -2px 0 @theme_accent;
 }

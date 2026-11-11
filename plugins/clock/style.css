@@ -1,0 +1,94 @@
+/* Plugin CSS is scoped to this plugin's items and popover. */
+.calendar button {
+  min-height: 26px;
+  min-width: 26px;
+  padding: 0 8px;
+  border-radius: 7px;
+}
+
+.calendar button.flat.link {
+  color: @theme_accent;
+  font-weight: 500;
+  padding: 0 4px;
+}
+
+/* The month: today filled, the selected day ringed, holidays red, other months faint. */
+.day {
+  border-radius: 9px;
+  padding-top: 2px;
+}
+
+.day:hover {
+  background-color: alpha(@theme_text, 0.06);
+}
+
+.dn {
+  min-width: 26px;
+  min-height: 26px;
+  border-radius: 13px;
+  font-weight: 500;
+}
+
+.dn.we { color: @theme_dim_text; }
+.dn.out { color: alpha(@theme_text_tertiary, 0.55); }
+.dn.hol { color: @theme_danger; }
+
+.dn.today {
+  background-color: @theme_accent;
+  color: @theme_on_accent;
+  font-weight: 700;
+}
+
+.dn.sel {
+  box-shadow: inset 0 0 0 1.6px @theme_accent;
+  color: @theme_accent;
+  font-weight: 700;
+}
+
+/* The day's agenda: past events faded, the next one tinted, a red line at now. */
+.ev {
+  padding: 7px 8px;
+  border-radius: 10px;
+}
+
+.ev.past { opacity: 0.5; }
+
+.now-line {
+  background-color: @theme_danger;
+  min-height: 2px;
+}
+
+.up {
+  padding: 4px 4px;
+  border-radius: 8px;
+}
+
+.up:hover { background-color: alpha(@theme_text, 0.05); }
+
+/* Reminders: an empty circle to tick, red when overdue. */
+.rem {
+  padding: 5px 8px;
+  border-radius: 10px;
+}
+
+.rem:hover { background-color: alpha(@theme_text, 0.05); }
+
+button.check {
+  min-width: 22px;
+  min-height: 22px;
+  padding: 0;
+  border-radius: 11px;
+  background: none;
+  color: @theme_text_tertiary;
+}
+
+button.check.late { color: @theme_danger; }
+button.check.on { color: @theme_accent; }
+
+.list {
+  min-width: 0;
+  padding: 2px 7px;
+  border-radius: 6px;
+  color: @theme_text_tertiary;
+  background-color: alpha(@theme_text, 0.06);
+}

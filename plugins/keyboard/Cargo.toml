@@ -1,0 +1,12 @@
+[package]
+name = "nyx-bar-keyboard"
+version = "0.1.0"
+description = "Nyx Bar plugin: the keyboard layout, when there's more than one"
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+nyx-plugin-sdk.workspace = true
+serde_json.workspace = true

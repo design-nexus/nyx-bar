@@ -21,14 +21,21 @@ It needs GTK 4, gtk4-layer-shell, librsvg, bubblewrap and xdg-dbus-proxy.
 
 | Plugin | Items |
 | --- | --- |
-| `nyx.workspaces` | workspaces on each monitor: click to go, scroll to move along |
-| `nyx.clock` | time and date; click for the month |
-| `nyx.weather` | Nyx Weather's conditions |
-| `nyx.stats` | CPU, memory, temperature, GPU; click for graphs |
-| `nyx.system` | network, Bluetooth, volume, battery; click for quick controls, right-click for the Control Center |
-| `nyx.media` | what's playing, with album art and controls |
-| `nyx.tray` | other apps' tray icons and menus |
-| `nyx.panels` | the Notification Center bell and the Control Center button |
+| `nyx.launcher` | the Nyx mark: click for Glimpse (apps and search), right-click for Settings |
+| `nyx.workspaces` | workspaces on each monitor as pills, numbers, icons, dots or an underline: click to go, scroll to move along, hover for the windows |
+| `nyx.window` | the focused window's app and title |
+| `nyx.clock` | date and time with the next event; click for the month, the day's agenda and reminders |
+| `nyx.media` | what's playing; click for the player, seek and its volume |
+| `nyx.weather` | Nyx Weather's conditions; click for the next hours, five days and alerts |
+| `nyx.stats` | CPU, memory and temperature as sparklines, text or rings; click for graphs and the busiest apps |
+| `nyx.privacy` | dots while the microphone, camera or screen sharing is in use |
+| `nyx.recording` | a timer and stop button while Nyx Capture records the screen |
+| `nyx.updates` | waiting package updates (Arch) |
+| `nyx.keyboard` | the keyboard layout, when there's more than one |
+| `nyx.keepawake` | keep the computer awake (off by default) |
+| `nyx.tray` | other apps' tray icons and menus, the rest in a drawer |
+| `nyx.system` | network, Bluetooth, volume, battery: each opens its Control Center page (right-click: the dashboard) |
+| `nyx.panels` | the Notification Center bell (right-click: Do not disturb, clear), and a Control Center button (off by default) |
 
 ## Plugins
 
@@ -51,12 +58,12 @@ and CPU limits. Writing one: [docs/plugins.md](docs/plugins.md).
 `~/.config/nyx/bar.toml` (written on first start, reloaded live):
 
 ```toml
-left = ["nyx.workspaces"]
-center = ["nyx.clock"]
-right = ["nyx.tray", "nyx.media", "nyx.weather", "nyx.stats", "nyx.system/network",
-         "nyx.system/bluetooth", "nyx.system/volume", "nyx.system/battery",
-         "nyx.panels/notifications", "nyx.panels/control-center"]
-height = 32
+left = [["nyx.launcher", "nyx.workspaces"], "nyx.window"]
+center = [["nyx.clock"]]
+right = ["nyx.privacy", "nyx.recording", ["nyx.media"], ["nyx.weather", "nyx.stats"],
+         "nyx.updates", "nyx.keyboard", "nyx.keepawake", "nyx.tray",
+         ["nyx.system"], ["nyx.panels/notifications"]]
+size = "default"
 
 [plugins."nyx.clock"]
 format = "%a %b %-d  %H:%M"
@@ -64,6 +71,12 @@ format = "%a %b %-d  %H:%M"
 [monitors."HDMI-A-1"]
 right = ["nyx.clock"]
 ```
+
+- Entries in brackets share one pill (`["nyx.weather", "nyx.stats"]`); the pill lights
+  while one of them is open. `"|"` draws a thin divider.
+- `size` is `compact` (28 px), `default` (32), `cozy` (36) or `spacious` (40); an exact
+  `height` wins over it. Settings → Nyx Bar sets the size, the status pill, the
+  calendar's layout and the workspaces' look.
 
 Which items show at all is in `~/.config/nyx/plugins.toml` (`nyx plugin configure`).
 Restyle anything in `~/.config/nyx/bar.css`.

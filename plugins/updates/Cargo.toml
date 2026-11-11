@@ -1,0 +1,12 @@
+[package]
+name = "nyx-bar-updates"
+version = "0.1.0"
+description = "Nyx Bar plugin: how many package updates are waiting"
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+nyx-plugin-sdk.workspace = true
+serde_json.workspace = true

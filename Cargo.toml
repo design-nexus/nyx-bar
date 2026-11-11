@@ -2,14 +2,24 @@
 resolver = "3"
 members = [
     "crates/nyx-bar-core",
+    "crates/nyx-bar-apps",
     "apps/bar",
     "apps/plugin",
     "plugins/workspaces",
+    "plugins/clock",
+    "plugins/weather",
     "plugins/system",
     "plugins/stats",
     "plugins/panels",
     "plugins/media",
     "plugins/tray",
+    "plugins/launcher",
+    "plugins/window",
+    "plugins/privacy",
+    "plugins/recording",
+    "plugins/keyboard",
+    "plugins/updates",
+    "plugins/keepawake",
 ]
 
 [workspace.package]
@@ -24,15 +34,16 @@ async-channel = "2"
 gtk = { version = "0.11", package = "gtk4", features = ["v4_18"] }
 gtk4-layer-shell = "0.8"
 libc = "0.2"
+nyx-bar-apps = { path = "crates/nyx-bar-apps" }
 nyx-config = { git = "https://github.com/nyxos-project/nyx-system.git", rev = "f68ecc891cd0d5a36b6ed29e93ed5ffc52e77acc", features = ["watch"] }
-nyx-desktop = { git = "https://github.com/design-nexus/nyx-core.git", rev = "4f05fb8fc92ec211f4e0f0b722fdf29a083c9e89", default-features = false }
+nyx-desktop = { git = "https://github.com/design-nexus/nyx-core.git", rev = "569546962455fe0a7bea07b195b07e9162cf2328", default-features = false }
 # The plugin system: nyx-core, and its GTK drawing in nyx-design.
-nyx-plugin = { git = "https://github.com/design-nexus/nyx-core.git", rev = "4f05fb8fc92ec211f4e0f0b722fdf29a083c9e89" }
-nyx-plugin-host = { git = "https://github.com/design-nexus/nyx-core.git", rev = "4f05fb8fc92ec211f4e0f0b722fdf29a083c9e89" }
-nyx-plugin-protocol = { git = "https://github.com/design-nexus/nyx-core.git", rev = "4f05fb8fc92ec211f4e0f0b722fdf29a083c9e89" }
-nyx-plugin-sdk = { git = "https://github.com/design-nexus/nyx-core.git", rev = "4f05fb8fc92ec211f4e0f0b722fdf29a083c9e89" }
-nyx-plugin-view = { git = "https://github.com/design-nexus/nyx-design.git", rev = "cf393978364ca7b2a309a88a8d1651bf9d338916" }
-nyx-theme = { git = "https://github.com/design-nexus/nyx-design.git", rev = "cf393978364ca7b2a309a88a8d1651bf9d338916" }
+nyx-plugin = { git = "https://github.com/design-nexus/nyx-core.git", rev = "569546962455fe0a7bea07b195b07e9162cf2328" }
+nyx-plugin-host = { git = "https://github.com/design-nexus/nyx-core.git", rev = "569546962455fe0a7bea07b195b07e9162cf2328" }
+nyx-plugin-protocol = { git = "https://github.com/design-nexus/nyx-core.git", rev = "569546962455fe0a7bea07b195b07e9162cf2328" }
+nyx-plugin-sdk = { git = "https://github.com/design-nexus/nyx-core.git", rev = "569546962455fe0a7bea07b195b07e9162cf2328" }
+nyx-plugin-view = { git = "https://github.com/design-nexus/nyx-design.git", rev = "61876120f782af70e687572c9e5b8ed4a6211833" }
+nyx-theme = { git = "https://github.com/design-nexus/nyx-design.git", rev = "61876120f782af70e687572c9e5b8ed4a6211833" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"

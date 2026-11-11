@@ -1,0 +1,13 @@
+[package]
+name = "nyx-bar-apps"
+version = "0.1.0"
+description = "Nyx Bar plugins' app lookup: a window's class to its app's name and icon"
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+
+[dev-dependencies]
+tempfile = "3"

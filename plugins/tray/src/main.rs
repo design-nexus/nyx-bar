@@ -1,7 +1,8 @@
 //! Nyx Bar tray: StatusNotifierItem icons from other apps. When another program
 //! already runs the watcher (Quickshell on Omarchy), this registers as a host with it;
 //! otherwise it is the watcher. Each icon is an item; its DBusMenu becomes the item's
-//! menu.
+//! menu. A few icons stay on the bar (`pinned` by app name, else the first three) and
+//! the rest wait in a drawer behind a chevron.
 
 mod png;
 
@@ -288,62 +289,136 @@ fn main() {
     let mut ids: HashMap<String, usize> = HashMap::new();
     let mut shown: Vec<String> = vec![];
     let mut current: HashMap<String, Tray> = HashMap::new();
+    let mut drawer = plugin.setting_bool("drawer", true);
+    let mut keep = plugin.setting_i64("keep", 3).clamp(0, 20) as usize;
+    let mut pinned = pinned_of(plugin.settings());
+    let mut more_after: Vec<String> = vec![];
+    let mut last_items: Vec<(Tray, Vec<MenuEntry>)> = vec![];
     for input in inputs {
-        match input {
-            Input::Data(Data::Items(items)) => {
-                let mut now = vec![];
-                for (t, menu) in items {
-                    let n = ids.len() + 1;
-                    let n = *ids.entry(t.service.clone()).or_insert(n);
-                    let id = format!("tray-{n}");
-                    let node = match &t.icon {
-                        Icon::Name(name) => icon(name),
-                        Icon::File(f) => image_path(f).size(16, 16),
-                        Icon::Png(data) => image_data(data.clone()).size(16, 16),
-                        Icon::None => icon("application-x-executable-symbolic"),
-                    };
-                    plugin.item(item(&id).view(node).tooltip(t.title.clone()).hidden(t.passive));
-                    if !menu.is_empty() {
-                        plugin.menu(&id, menu);
-                    }
-                    current.insert(id.clone(), t);
-                    now.push(id);
-                }
-                for gone in shown.iter().filter(|s| !now.contains(s)) {
-                    plugin.remove(gone);
-                    current.remove(gone);
-                }
-                shown = now;
+        let mut items = match input {
+            Input::Data(Data::Items(items)) => items,
+            Input::Settings(st) => {
+                drawer = st.get("drawer").and_then(|v| v.as_bool()).unwrap_or(true);
+                keep = st.get("keep").and_then(|v| v.as_i64()).unwrap_or(3).clamp(0, 20) as usize;
+                pinned = pinned_of(&st);
+                std::mem::take(&mut last_items)
             }
             Input::Event(e) => {
-                let Some(t) = current.get(&e.item) else { continue };
-                let (x, y) = e.anchor.as_ref().map(|a| (a.x + a.width / 2, a.y + a.height)).unwrap_or((0, 0));
-                match (e.kind, e.button) {
-                    (EventKind::Click, Some(1)) if !t.item_is_menu => {
-                        let _ = conn.call_method(Some(t.bus.as_str()), t.path.as_str(), Some(ITEM_IFACE), "Activate", &(x, y));
+                if let Some(id) = e.control.as_deref().and_then(|c| c.strip_prefix("open:")) {
+                    if let Some(t) = current.get(id) {
+                        let method = if t.item_is_menu { "ContextMenu" } else { "Activate" };
+                        let _ = conn.call_method(Some(t.bus.as_str()), t.path.as_str(), Some(ITEM_IFACE), method, &(0i32, 0i32));
                     }
-                    (EventKind::Click, Some(2)) => {
-                        let _ = conn.call_method(Some(t.bus.as_str()), t.path.as_str(), Some(ITEM_IFACE), "SecondaryActivate", &(x, y));
-                    }
-                    (EventKind::Click, _) => {
-                        // No DBusMenu: let the app show its own.
-                        let _ = conn.call_method(Some(t.bus.as_str()), t.path.as_str(), Some(ITEM_IFACE), "ContextMenu", &(x, y));
-                    }
-                    (EventKind::Action, _) => {
-                        let Some(rest) = e.control.as_deref().and_then(|c| c.strip_prefix("menu:")) else { continue };
-                        let mut parts = rest.splitn(3, '|');
-                        let (Some(bus), Some(path), Some(id)) = (parts.next(), parts.next(), parts.next().and_then(|i| i.parse::<i32>().ok())) else {
-                            continue;
-                        };
-                        let stamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs() as u32).unwrap_or(0);
-                        let _ = conn.call_method(Some(bus), path, Some(MENU_IFACE), "Event", &(id, "clicked", Value::from(0i32), stamp));
-                        let _ = trigger.send(());
-                    }
-                    _ => {}
+                    continue;
                 }
+                on_event(&conn, &current, &trigger, e);
+                continue;
             }
             Input::Shutdown => break,
-            _ => {}
+            _ => continue,
+        };
+        last_items = items.clone();
+        let mut now = vec![];
+        let mut overflow: Vec<(String, Tray)> = vec![];
+        let active: Vec<String> = items.iter().filter(|(t, _)| !t.passive).map(|(t, _)| t.service.clone()).collect();
+        let on_bar = |t: &Tray| -> bool {
+            if !drawer {
+                return true;
+            }
+            if !pinned.is_empty() {
+                let title = t.title.to_lowercase();
+                return pinned.iter().any(|p| title.contains(p) || t.service.to_lowercase().contains(p));
+            }
+            active.iter().position(|s| *s == t.service).is_some_and(|i| i < keep)
+        };
+        for (t, menu) in items.drain(..) {
+            let n = ids.len() + 1;
+            let n = *ids.entry(t.service.clone()).or_insert(n);
+            let id = format!("tray-{n}");
+            let bar = on_bar(&t);
+            plugin.item(item(&id).view(icon_node(&t, 16)).tooltip(t.title.clone()).hidden(t.passive || !bar));
+            if !menu.is_empty() {
+                plugin.menu(&id, menu);
+            }
+            if !t.passive && !bar {
+                overflow.push((id.clone(), t.clone()));
+            }
+            current.insert(id.clone(), t);
+            now.push(id);
         }
+        for gone in shown.iter().filter(|s| !now.contains(s)) {
+            plugin.remove(gone);
+            current.remove(gone);
+        }
+        // The chevron goes after every icon: sent again (last) when icons come.
+        if now.iter().any(|i| !more_after.contains(i)) {
+            plugin.remove("tray-more");
+            more_after = now.clone();
+        }
+        if overflow.is_empty() {
+            plugin.item(item("tray-more").hidden(true));
+            plugin.popover("tray-more", None);
+        } else {
+            plugin.item(item("tray-more").view(icon_sized("pan-down-symbolic", 13).class("dim")).tooltip(format!("{} more", overflow.len())));
+            let cells: Vec<Node> = overflow
+                .iter()
+                .map(|(id, t)| {
+                    let name: String = if t.title.is_empty() { "App".into() } else { t.title.chars().take(12).collect() };
+                    centered(vbox([icon_node(t, 20), label(name).class("dim").class("xs")])).spacing(6).width(70).class("cell").action(&format!("open:{id}")).tooltip(&t.title)
+                })
+                .collect();
+            let mut rows: Vec<Node> = cells.chunks(5).map(|c| hbox(c.to_vec()).spacing(4)).collect();
+            rows.push(label("Keep one on the bar with pinned in bar.toml").class("tertiary").class("xs").margin(4, 0, 0, 0));
+            plugin.popover("tray-more", Some(vbox(rows).spacing(6)));
+        }
+        shown = now;
+    }
+}
+
+fn pinned_of(v: &serde_json::Value) -> Vec<String> {
+    v.get("pinned").and_then(|p| p.as_array()).map(|a| a.iter().filter_map(|x| x.as_str().map(|s| s.to_lowercase())).collect()).unwrap_or_default()
+}
+
+fn centered(mut n: Node) -> Node {
+    if let NodeKind::Box { align, .. } = &mut n.kind {
+        *align = Align::Center;
+    }
+    n
+}
+
+fn icon_node(t: &Tray, size: i32) -> Node {
+    match &t.icon {
+        Icon::Name(name) => icon_sized(name, size),
+        Icon::File(f) => image_path(f).size(size, size),
+        Icon::Png(data) => image_data(data.clone()).size(size, size),
+        Icon::None => icon_sized("application-x-executable-symbolic", size),
+    }
+}
+
+fn on_event(conn: &Connection, current: &HashMap<String, Tray>, trigger: &std::sync::mpsc::Sender<()>, e: nyx_plugin_sdk::protocol::Event) {
+    let Some(t) = current.get(&e.item) else { return };
+    let (x, y) = e.anchor.as_ref().map(|a| (a.x + a.width / 2, a.y + a.height)).unwrap_or((0, 0));
+    match (e.kind, e.button) {
+        (EventKind::Click, Some(1)) if !t.item_is_menu => {
+            let _ = conn.call_method(Some(t.bus.as_str()), t.path.as_str(), Some(ITEM_IFACE), "Activate", &(x, y));
+        }
+        (EventKind::Click, Some(2)) => {
+            let _ = conn.call_method(Some(t.bus.as_str()), t.path.as_str(), Some(ITEM_IFACE), "SecondaryActivate", &(x, y));
+        }
+        (EventKind::Click, _) => {
+            // No DBusMenu: let the app show its own.
+            let _ = conn.call_method(Some(t.bus.as_str()), t.path.as_str(), Some(ITEM_IFACE), "ContextMenu", &(x, y));
+        }
+        (EventKind::Action, _) => {
+            let Some(rest) = e.control.as_deref().and_then(|c| c.strip_prefix("menu:")) else { return };
+            let mut parts = rest.splitn(3, '|');
+            let (Some(bus), Some(path), Some(id)) = (parts.next(), parts.next(), parts.next().and_then(|i| i.parse::<i32>().ok())) else {
+                return;
+            };
+            let stamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs() as u32).unwrap_or(0);
+            let _ = conn.call_method(Some(bus), path, Some(MENU_IFACE), "Event", &(id, "clicked", Value::from(0i32), stamp));
+            let _ = trigger.send(());
+        }
+        _ => {}
     }
 }

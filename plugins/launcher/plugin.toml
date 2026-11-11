@@ -1,0 +1,26 @@
+id = "nyx.launcher"
+name = "Launcher"
+version = "0.1.0"
+author = "Design Nexus"
+license = "MIT"
+description = "The Nyx mark: click for Glimpse, the launcher and search; right-click for Settings."
+api_version = 1
+kinds = ["bar"]
+exec = ["nyx-bar-launcher"]
+
+[permissions]
+# Documentation for this trusted plugin; a third-party copy would need these.
+host_commands = [["nyx-glimpse", "--toggle"], ["walker"], ["nyx-settings"]]
+
+[bar]
+mode = "stream"
+section = "left"
+
+[[bar.items]]
+id = "launcher"
+name = "Launcher"
+default = true
+
+[settings]
+# What a click runs; empty for Glimpse (or Walker where Glimpse isn't installed).
+command = []

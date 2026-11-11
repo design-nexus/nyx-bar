@@ -103,7 +103,7 @@ Kinds: `click`, `scroll`, `action` (buttons, rows, menu entries), `toggle`, `cha
 
 | `type` | Fields | Meaning |
 | --- | --- | --- |
-| `item` | `id`, `monitor?`, `view?`, `icon?`, `text?`, `badge?`, `progress?`, `tooltip?`, `visible`, `class`, `on_click`, `on_middle_click`, `on_right_click`, `on_scroll_up`, `on_scroll_down` | show or replace an item |
+| `item` | `id`, `monitor?`, `view?`, `icon?`, `text?`, `badge?`, `progress?`, `tooltip?`, `visible`, `class`, `open`, `on_click`, `on_middle_click`, `on_right_click`, `on_scroll_up`, `on_scroll_down` | show or replace an item |
 | `patch` | `item`, `monitor?`, `nodes: [{id, set}]` | change properties of nodes by id |
 | `popover` | `item`, `view?` | what a left click opens (no `view` removes it) |
 | `menu` | `item`, `entries` | what a right click opens |
@@ -117,6 +117,12 @@ if there is one, a right click the menu if there is one; else the plugin gets an
 
 Menu entries: `id`, `label`, `icon?`, `checked?` (a check mark), `enabled`,
 `separator`, `children` (a submenu).
+
+`open: true` says the item has something open that isn't its popover (`nyx.system`
+sets it while Control Center shows that item's page). An open item, and the pill its
+group shares in `bar.toml` (`["nyx.weather", "nyx.stats"]`), is lit as while its
+popover shows. The bar's height is in `hello` (`bar_height`): 28, 32, 36 or 40 for
+the size presets.
 
 ## Desktop widgets
 
@@ -196,7 +202,17 @@ An item without a `view` is a row of its `icon`, `text`, `badge` and `progress`.
 `id` · `class` (list) · `width` · `height` · `margin` `[top, right, bottom, left]` ·
 `font_size` · `color` · `background` · `tooltip` · `visible` · `expand` · `hover` and
 `pressed` (property sets the host applies while the pointer is over the item or a button
-is held, and puts back after).
+is held, and puts back after) · `action` (any node: a click on it sends an `action`
+event with this as `control`, as a button does; the pointer becomes a hand).
+
+An `icon` name can list fallbacks, `"a-symbolic|b-symbolic|c"`: the first the icon
+theme has is drawn. In the bar a label keeps its full width unless it has a `width`
+or the class `shrink`; then it ends in "…" when the bar runs out of room (window and
+song titles on a narrow screen).
+
+The bar's style has classes for views: `dim`, `tertiary`, `strong`, `small`, `xs`,
+`big`, `huge`, `caps`, `tnum` (figures of one width), `chip` (with `warning` or
+`danger`), `kbd` (a key cap), `card` and `selected` (popovers).
 
 | `node` | Fields |
 | --- | --- |

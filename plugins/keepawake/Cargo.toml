@@ -1,0 +1,11 @@
+[package]
+name = "nyx-bar-keepawake"
+version = "0.1.0"
+description = "Nyx Bar plugin: keep the computer awake (an idle inhibitor)"
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+nyx-plugin-sdk.workspace = true

@@ -1,9 +1,9 @@
 id = "nyx.system"
 name = "System status"
-version = "0.1.0"
+version = "0.2.0"
 author = "Design Nexus"
 license = "MIT"
-description = "Network, Bluetooth, volume and battery. Click for quick controls; right-click opens the Control Center."
+description = "Network, Bluetooth, volume and battery, usually in one pill. Each opens its Control Center page; right-click opens the dashboard."
 api_version = 1
 kinds = ["bar"]
 exec = ["nyx-bar-system"]
@@ -11,6 +11,8 @@ exec = ["nyx-bar-system"]
 [permissions]
 # Documentation for this trusted plugin.
 system_talk = ["org.freedesktop.NetworkManager", "org.bluez", "org.freedesktop.UPower", "net.hadess.PowerProfiles"]
+session_talk = ["io.github.design_nexus.nyx.ControlCenter"]
+host_commands = [["nyx-control-center", "--toggle"], ["nyx-control-center", "--toggle", "wifi"], ["nyx-control-center", "--toggle", "bluetooth"], ["nyx-control-center", "--toggle", "sound"], ["nyx-control-center", "--toggle", "battery"], ["wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", "toggle"]]
 
 [bar]
 mode = "stream"
@@ -30,7 +32,7 @@ default = true
 [[bar.items]]
 id = "volume"
 name = "Volume"
-description = "Scroll to change it, right-click to mute."
+description = "Scroll to change it, middle-click to mute."
 default = true
 
 [[bar.items]]
@@ -41,5 +43,5 @@ default = true
 
 [settings]
 # Show the volume and battery percentages next to their icons.
-volume_percent = true
+volume_percent = false
 battery_percent = true

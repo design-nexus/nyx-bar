@@ -1,9 +1,13 @@
 //! Nyx Bar system status: network, Bluetooth, volume and battery, each its own item
-//! (the user picks which). Left click opens a popover with quick controls; right
-//! click opens the matching Control Center page when it's installed.
+//! (the user picks which), usually sharing one pill. Each opens its own Control Center
+//! page (Wi-Fi, Bluetooth, Sound, Battery) and right-click opens the dashboard; the items
+//! stay lit while Control Center is open. Scrolling over the volume changes it and a
+//! middle click mutes. Without Control Center, a click opens a popover with quick
+//! controls instead.
 
 use nyx_plugin_sdk::protocol::{Direction, EventKind};
 use nyx_plugin_sdk::services::audio::{self, Audio};
+use nyx_plugin_sdk::services::dbus::{self, Connection};
 use nyx_plugin_sdk::services::bluetooth::{self, Bluetooth};
 use nyx_plugin_sdk::services::network::{self, Kind, Network};
 use nyx_plugin_sdk::services::power::{self, Battery};
@@ -15,28 +19,39 @@ enum Data {
     Bluetooth(Bluetooth),
     Audio(Audio),
     Battery(Battery),
+    ControlCenter(bool),
 }
 
-fn control_center(page: Option<&str>) -> Option<Vec<&str>> {
-    have("nyx-control-center").then(|| {
-        let mut v = vec!["nyx-control-center", "--toggle"];
-        v.extend(page);
-        v
-    })
+const CC: &str = "io.github.design_nexus.nyx.ControlCenter";
+const PANEL_PATH: &str = "/io/github/design_nexus/nyx/Panel";
+const PANEL_IFACE: &str = "io.github.design_nexus.nyx.Panel1";
+
+/// Whether Control Center is installed (then it holds the controls) and open.
+#[derive(Clone, Copy, Default)]
+struct Cc {
+    installed: bool,
+    open: bool,
 }
 
-fn with_cc(i: Item, page: Option<&str>) -> Item {
-    match control_center(page) {
-        Some(argv) => i.on_right_click(&argv),
-        None => i,
+/// An item opens its Control Center page; right-click opens the dashboard.
+fn with_cc(mut i: Item, page: &str, cc: Cc) -> Item {
+    if !cc.installed {
+        return i;
     }
+    i.open = cc.open;
+    i.on_click(&["nyx-control-center", "--toggle", page]).on_right_click(&["nyx-control-center", "--toggle"])
 }
 
-fn more_button(page: Option<&str>) -> Option<Node> {
-    control_center(page).map(|_| button(&format!("cc:{}", page.unwrap_or("")), Some("More in Control Center"), Some("go-next-symbolic")))
+/// The quick-controls popover, only where Control Center isn't there to open.
+fn popover(p: &Plugin<Data>, item: &str, view: Node, cc: Cc) {
+    p.popover(item, (!cc.installed).then_some(view));
 }
 
-fn network(p: &Plugin<Data>, n: &Network) {
+fn cc_open(conn: &Connection) -> bool {
+    conn.call_method(Some(CC), PANEL_PATH, Some(PANEL_IFACE), "IsOpen", &()).ok().and_then(|r| r.body().deserialize::<bool>().ok()).unwrap_or(false)
+}
+
+fn network(p: &Plugin<Data>, n: &Network, cc: Cc) {
     let text = match (n.kind, &n.name) {
         (_, _) if n.missing => "NetworkManager isn't running".to_string(),
         (Kind::None, _) => "Not connected".to_string(),
@@ -54,7 +69,10 @@ fn network(p: &Plugin<Data>, n: &Network) {
     if n.vpn.is_some() {
         icons.push(icon("network-vpn-symbolic"));
     }
-    p.item(with_cc(item("network").view(hbox(icons).spacing(2)).tooltip(tip), Some("wifi")));
+    if cc.installed {
+        tip.push_str("\nClick: Wi-Fi · right-click: Control Center");
+    }
+    p.item(with_cc(item("network").view(hbox(icons).spacing(2)).tooltip(tip), "wifi", cc));
     let mut rows = vec![header("Network")];
     if n.wifi_available {
         rows.push(toggle("wifi", "Wi-Fi", n.wifi_enabled));
@@ -69,11 +87,10 @@ fn network(p: &Plugin<Data>, n: &Network) {
     if let Some(v) = &n.vpn {
         rows.push(row(Some("network-vpn-symbolic"), v.clone(), Some("VPN".into()), None));
     }
-    rows.extend(more_button(Some("wifi")));
-    p.popover("network", Some(vbox(rows).spacing(8).width(260)));
+    popover(p, "network", vbox(rows).spacing(8).width(260), cc);
 }
 
-fn bluetooth(p: &Plugin<Data>, b: &Bluetooth) {
+fn bluetooth(p: &Plugin<Data>, b: &Bluetooth, cc: Cc) {
     if !b.available {
         p.item(item("bluetooth").hidden(true));
         return;
@@ -86,7 +103,7 @@ fn bluetooth(p: &Plugin<Data>, b: &Bluetooth) {
             None => d.name.clone(),
         }).collect::<Vec<_>>().join("\n"),
     };
-    p.item(with_cc(item("bluetooth").view(icon(b.icon())).tooltip(tip), Some("bluetooth")));
+    p.item(with_cc(item("bluetooth").view(icon(b.icon())).tooltip(tip), "bluetooth", cc));
     let mut rows = vec![header("Bluetooth"), toggle("bt-power", "Bluetooth", b.powered)];
     for d in &b.connected {
         rows.push(row(
@@ -102,11 +119,10 @@ fn bluetooth(p: &Plugin<Data>, b: &Bluetooth) {
     if b.powered && b.connected.is_empty() {
         rows.push(label("No devices connected").color("dim_text"));
     }
-    rows.extend(more_button(Some("bluetooth")));
-    p.popover("bluetooth", Some(vbox(rows).spacing(8).width(260)));
+    popover(p, "bluetooth", vbox(rows).spacing(8).width(260), cc);
 }
 
-fn volume(p: &Plugin<Data>, a: &Audio, show_pct: bool) {
+fn volume(p: &Plugin<Data>, a: &Audio, show_pct: bool, cc: Cc) {
     if !a.available {
         p.item(item("volume").hidden(true));
         return;
@@ -117,16 +133,17 @@ fn volume(p: &Plugin<Data>, a: &Audio, show_pct: bool) {
         parts.push(label(format!("{pct}%")).id("pct"));
     }
     let tip = if a.muted { format!("Muted ({pct}%)") } else { format!("Volume {pct}%") };
-    p.item(item("volume").view(hbox(parts).spacing(4)).tooltip(tip).on_right_click(&["wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", "toggle"]));
+    let tip = format!("{tip}\nScroll to change it · middle-click mutes");
+    let i = item("volume").view(hbox(parts).spacing(4)).tooltip(tip).on_middle_click(&["wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", "toggle"]);
+    p.item(if cc.installed { with_cc(i, "sound", cc) } else { i.on_right_click(&["wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", "toggle"]) });
     let mut rows = vec![header("Sound"), slider("volume", 0.0, 150.0, 1.0, pct as f64, Some(a.icon())), toggle("mute", "Mute", a.muted)];
     if let Some(m) = a.mic_muted {
         rows.push(toggle("mic", "Mute microphone", m));
     }
-    rows.extend(more_button(None));
-    p.popover("volume", Some(vbox(rows).spacing(8).width(280)));
+    popover(p, "volume", vbox(rows).spacing(8).width(280), cc);
 }
 
-fn battery(p: &Plugin<Data>, b: &Battery, show_pct: bool) {
+fn battery(p: &Plugin<Data>, b: &Battery, show_pct: bool, cc: Cc) {
     if !b.present {
         p.item(item("battery").hidden(true));
         return;
@@ -155,7 +172,7 @@ fn battery(p: &Plugin<Data>, b: &Battery, show_pct: bool) {
     } else if !b.charging && pct <= 20 {
         i = i.class("warning");
     }
-    p.item(with_cc(i, Some("battery")));
+    p.item(with_cc(i, "battery", cc));
     let mut rows = vec![header(&format!("Battery {pct}%")), progress(b.percent / 100.0), label(state).color("dim_text")];
     if let Some(profile) = &b.profile {
         rows.push(separator());
@@ -164,13 +181,36 @@ fn battery(p: &Plugin<Data>, b: &Battery, show_pct: bool) {
             rows.push(row(mark, name, None, Some(&format!("profile:{id}"))));
         }
     }
-    rows.extend(more_button(Some("battery")));
-    p.popover("battery", Some(vbox(rows).spacing(8).width(260)));
+    popover(p, "battery", vbox(rows).spacing(8).width(260), cc);
 }
 
 fn main() {
     let (plugin, inputs) = Plugin::<Data>::start();
     let send = plugin.data();
+    // The items in the pill's order, before any of them knows its state.
+    for id in ["network", "bluetooth", "volume", "battery"] {
+        if plugin.enabled(id) {
+            plugin.item(item(id).hidden(true));
+        }
+    }
+    let mut cc = Cc { installed: have("nyx-control-center"), open: false };
+    if cc.installed
+        && let Ok(conn) = Connection::session()
+    {
+        let send = send.clone();
+        let c = conn.clone();
+        // Opened and Closed say when it changes; asking now and then catches the rest.
+        let trigger = nyx_plugin_sdk::services::refresher(std::time::Duration::from_secs(30), move || send(Data::ControlCenter(cc_open(&c))));
+        dbus::listen(&conn, None, Some(PANEL_PATH), trigger.clone());
+        std::thread::spawn(move || {
+            loop {
+                std::thread::sleep(std::time::Duration::from_millis(700));
+                if trigger.send(()).is_err() {
+                    return;
+                }
+            }
+        });
+    }
     if plugin.enabled("network") {
         let s = send.clone();
         network::watch(move |n| s(Data::Network(n)));
@@ -187,33 +227,51 @@ fn main() {
         let s = send.clone();
         power::watch(move |b| s(Data::Battery(b)));
     }
-    let mut volume_pct = plugin.setting_bool("volume_percent", true);
+    let mut volume_pct = plugin.setting_bool("volume_percent", false);
     let mut battery_pct = plugin.setting_bool("battery_percent", true);
-    let (mut last_bt, mut last_audio, mut last_battery) = (None::<Bluetooth>, None::<Audio>, None::<Battery>);
+    let (mut last_net, mut last_bt, mut last_audio, mut last_battery) = (None::<Network>, None::<Bluetooth>, None::<Audio>, None::<Battery>);
     for input in inputs {
+        let redraw_all = |cc: Cc, vp: bool, bp: bool, n: &Option<Network>, b: &Option<Bluetooth>, a: &Option<Audio>, bat: &Option<Battery>| {
+            if let Some(n) = n {
+                network(&plugin, n, cc);
+            }
+            if let Some(b) = b {
+                bluetooth(&plugin, b, cc);
+            }
+            if let Some(a) = a {
+                volume(&plugin, a, vp, cc);
+            }
+            if let Some(x) = bat {
+                battery(&plugin, x, bp, cc);
+            }
+        };
         match input {
-            Input::Data(Data::Network(n)) => network(&plugin, &n),
+            Input::Data(Data::Network(n)) => {
+                network(&plugin, &n, cc);
+                last_net = Some(n);
+            }
             Input::Data(Data::Bluetooth(b)) => {
-                bluetooth(&plugin, &b);
+                bluetooth(&plugin, &b, cc);
                 last_bt = Some(b);
             }
             Input::Data(Data::Audio(a)) => {
-                volume(&plugin, &a, volume_pct);
+                volume(&plugin, &a, volume_pct, cc);
                 last_audio = Some(a);
             }
             Input::Data(Data::Battery(b)) => {
-                battery(&plugin, &b, battery_pct);
+                battery(&plugin, &b, battery_pct, cc);
                 last_battery = Some(b);
             }
+            Input::Data(Data::ControlCenter(open)) => {
+                if open != cc.open {
+                    cc.open = open;
+                    redraw_all(cc, volume_pct, battery_pct, &last_net, &last_bt, &last_audio, &last_battery);
+                }
+            }
             Input::Settings(s) => {
-                volume_pct = s.get("volume_percent").and_then(|v| v.as_bool()).unwrap_or(true);
+                volume_pct = s.get("volume_percent").and_then(|v| v.as_bool()).unwrap_or(false);
                 battery_pct = s.get("battery_percent").and_then(|v| v.as_bool()).unwrap_or(true);
-                if let Some(a) = &last_audio {
-                    volume(&plugin, a, volume_pct);
-                }
-                if let Some(b) = &last_battery {
-                    battery(&plugin, b, battery_pct);
-                }
+                redraw_all(cc, volume_pct, battery_pct, &last_net, &last_bt, &last_audio, &last_battery);
             }
             Input::Event(e) => match (e.item.as_str(), e.kind) {
                 ("volume", EventKind::Scroll) => {

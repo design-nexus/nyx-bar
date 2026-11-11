@@ -1,7 +1,10 @@
-//! Nyx Bar workspaces: one item per monitor, a button per workspace. The active one is
-//! marked, busy ones are bright, urgent ones are red. Click goes there; scrolling over
-//! the item moves to the next or previous workspace on that monitor. A monitor with
-//! workspaces of its own (Omarchy's second screen, a virtual monitor) shows those, 1 to 10.
+//! Nyx Bar workspaces: one item per monitor, a button per workspace, in one of five
+//! looks (`look`): `pills` (the active workspace an accent pill holding its windows'
+//! icons, others a number over a dot per window), `numbers`, `icons` (busy workspaces as
+//! their apps' icons), `dots` and `underline`. Urgent ones are red. Hovering one lists its
+//! windows; click goes there; scrolling over the item moves to the next or previous
+//! workspace on that monitor. A monitor with workspaces of its own (Omarchy's second
+//! screen, a virtual monitor) shows those, 1 to 10.
 
 use nyx_desktop::hypr::Instance;
 use nyx_desktop::watch::{Update, watch};
@@ -43,29 +46,117 @@ fn busy_numbers(d: &Desktop, monitor: &str, base: i64) -> Vec<i64> {
         .collect()
 }
 
-fn draw(plugin: &Plugin<Arc<Desktop>>, d: &Desktop, count: i64) {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Look {
+    Pills,
+    Numbers,
+    Icons,
+    Dots,
+    Underline,
+}
+
+impl Look {
+    fn parse(s: &str) -> Look {
+        match s {
+            "numbers" => Look::Numbers,
+            "icons" => Look::Icons,
+            "dots" => Look::Dots,
+            "underline" => Look::Underline,
+            _ => Look::Pills,
+        }
+    }
+}
+
+/// A workspace's windows, most recently focused first: (class, title).
+fn windows_on(d: &Desktop, id: i64) -> Vec<(String, String)> {
+    let mut w: Vec<_> = d.windows.iter().filter(|w| w.workspace == id && !w.hidden).collect();
+    w.sort_by_key(|w| w.focus_order);
+    w.into_iter().map(|w| (w.class.clone(), w.title.clone())).collect()
+}
+
+fn tooltip(n: i64, wins: &[(String, String)]) -> String {
+    let mut t = format!("Workspace {n}");
+    if wins.is_empty() {
+        t.push_str(" · empty");
+    }
+    for (class, title) in wins.iter().take(8) {
+        let app = nyx_bar_apps::lookup(class).name;
+        if title.is_empty() || *title == app {
+            t.push_str(&format!("\n{app}"));
+        } else {
+            t.push_str(&format!("\n{app} — {title}"));
+        }
+    }
+    t
+}
+
+/// Each window's app once, in focus order.
+fn apps(wins: &[(String, String)]) -> Vec<nyx_bar_apps::App> {
+    let mut out: Vec<nyx_bar_apps::App> = vec![];
+    for (class, _) in wins {
+        let a = nyx_bar_apps::lookup(class);
+        if !out.iter().any(|o| o.icon == a.icon) {
+            out.push(a);
+        }
+    }
+    out
+}
+
+fn one(look: Look, n: i64, id: i64, state: &str, wins: &[(String, String)]) -> Node {
+    let num = || label(n.to_string()).class("ws-num");
+    let node = match look {
+        Look::Numbers => label(n.to_string()).class("ws-n"),
+        Look::Underline => label(n.to_string()).class("ws-u"),
+        Look::Dots => label("").class("ws-dot"),
+        Look::Pills if state == "active" => {
+            let mut c = vec![num()];
+            c.extend(apps(wins).iter().take(4).map(|a| icon_sized(&a.icons_symbolic_first(), 13)));
+            hbox(c).spacing(6).class("ws-pill")
+        }
+        Look::Pills => {
+            let dots = "•".repeat(wins.len().min(3));
+            vbox([num(), label(dots).class("pips")]).spacing(0).class("ws-pill")
+        }
+        Look::Icons => {
+            let mut c = vec![num()];
+            c.extend(apps(wins).iter().take(4).map(|a| icon_sized(&a.icons(), 16)));
+            hbox(c).spacing(4).class("ws-apps")
+        }
+    };
+    node.class("ws").class(state).id(&format!("ws-{id}")).action(&id.to_string()).tooltip(&tooltip(n, wins))
+}
+
+fn draw(plugin: &Plugin<Arc<Desktop>>, d: &Desktop, count: i64, look: Look) {
     for m in d.monitors.iter().filter(|m| !m.disabled) {
         let base = base_of(d, &m.name);
         let busy = busy_numbers(d, &m.name, base);
         let active = m.active_workspace - base;
         let last = busy.iter().copied().chain([count, active.min(*USER_WORKSPACES.end())]).max().unwrap_or(count);
-        let mut buttons = vec![];
+        let mut nodes = vec![];
         for n in 1..=last.min(*USER_WORKSPACES.end()) {
             let id = base + n;
             let urgent = d.windows.iter().any(|w| w.workspace == id && w.urgent);
-            let mut b = button(&n.to_string(), Some(&id.to_string()), None).id(format!("ws-{id}")).class("workspace");
-            b = if n == active {
-                b.class("active")
+            let state = if n == active {
+                "active"
             } else if urgent {
-                b.class("urgent")
+                "urgent"
             } else if busy.contains(&n) {
-                b.class("busy")
+                "busy"
             } else {
-                b.class("dim")
+                "dim"
             };
-            buttons.push(b);
+            // Busy workspaces only, in the icons look (and the one you're on).
+            if look == Look::Icons && state == "dim" {
+                continue;
+            }
+            nodes.push(one(look, n, id, state, &windows_on(d, id)));
         }
-        plugin.item(item(ITEM).monitor(&m.name).view(hbox(buttons).spacing(0)).tooltip("Workspaces · scroll to move along"));
+        let spacing = match look {
+            Look::Dots => 5,
+            Look::Numbers | Look::Underline => 0,
+            _ => 2,
+        };
+        plugin.item(item(ITEM).monitor(&m.name).view(hbox(nodes).spacing(spacing).class(&format!("look-{look:?}").to_lowercase())).tooltip("Workspaces · scroll to move along"));
     }
 }
 
@@ -73,6 +164,7 @@ fn main() {
     let (plugin, inputs) = Plugin::<Arc<Desktop>>::start();
     let mut count = plugin.setting_i64("count", 5).clamp(1, 10);
     let mut wrap = plugin.setting_bool("wrap", false);
+    let mut look = Look::parse(&plugin.setting_str("look", "pills"));
     let send = plugin.data();
     let _watcher = watch(move |u: Update| {
         if u.changes.workspaces || u.changes.active || u.changes.windows || u.changes.monitors {
@@ -83,14 +175,15 @@ fn main() {
     for input in inputs {
         match input {
             Input::Data(d) => {
-                draw(&plugin, &d, count);
+                draw(&plugin, &d, count, look);
                 desktop = Some(d);
             }
             Input::Settings(s) => {
                 count = s.get("count").and_then(|v| v.as_i64()).unwrap_or(5).clamp(1, 10);
                 wrap = s.get("wrap").and_then(|v| v.as_bool()).unwrap_or(false);
+                look = Look::parse(s.get("look").and_then(|v| v.as_str()).unwrap_or("pills"));
                 if let Some(d) = &desktop {
-                    draw(&plugin, d, count);
+                    draw(&plugin, d, count, look);
                 }
             }
             Input::Event(e) => match e.kind {

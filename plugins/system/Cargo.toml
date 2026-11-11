@@ -8,5 +8,5 @@ authors.workspace = true
 repository.workspace = true
 
 [dependencies]
-nyx-plugin-sdk = { workspace = true, features = ["network", "bluetooth", "audio", "power"] }
+nyx-plugin-sdk = { workspace = true, features = ["network", "bluetooth", "audio", "power", "dbus"] }
 serde_json.workspace = true

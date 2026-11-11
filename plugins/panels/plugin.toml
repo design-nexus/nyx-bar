@@ -1,9 +1,9 @@
 id = "nyx.panels"
 name = "Panels"
-version = "0.1.0"
+version = "0.2.0"
 author = "Design Nexus"
 license = "MIT"
-description = "Buttons for the Nyx Notification Center and Control Center."
+description = "The Notification Center bell (unread count, Do not disturb, a quick menu) and, if you want it, a Control Center button."
 api_version = 1
 kinds = ["bar"]
 exec = ["nyx-bar-panels"]
@@ -11,7 +11,7 @@ exec = ["nyx-bar-panels"]
 [permissions]
 # Documentation for this trusted plugin.
 session_talk = ["io.github.design_nexus.nyx.Notifications", "io.github.design_nexus.nyx.ControlCenter"]
-host_commands = [["nyx-notification-center", "--toggle"], ["nyx-control-center", "--toggle"]]
+host_commands = [["nyx-notification-center", "--toggle"], ["nyx-control-center", "--toggle"], ["nyx-settings", "--section", "notifications"]]
 
 [bar]
 mode = "stream"
@@ -20,10 +20,11 @@ section = "right"
 [[bar.items]]
 id = "notifications"
 name = "Notifications"
-description = "A dot for unread notifications, crossed out in Do not disturb. Right-click switches Do not disturb."
+description = "The unread count, a moon in Do not disturb. Right-click for Do not disturb for a while, and Clear."
 default = true
 
 [[bar.items]]
 id = "control-center"
 name = "Control Center"
-default = true
+description = "Off by default: the status icons open Control Center."
+default = false

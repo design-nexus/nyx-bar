@@ -1,12 +1,12 @@
 id = "nyx.weather"
 name = "Weather"
-version = "0.1.0"
+version = "0.2.0"
 author = "Design Nexus"
 license = "MIT"
-description = "Current conditions from Nyx Weather."
+description = "Current conditions from Nyx Weather; click for the next hours, five days and alerts."
 api_version = 1
 kinds = ["bar", "desktop", "control-center"]
-exec = ["sh", "weather.sh"]
+exec = ["nyx-bar-weather"]
 needs = ["nyx-weather"]
 
 [permissions]
@@ -15,14 +15,13 @@ network = true
 host_commands = [["nyx-weather", "--toggle"], ["nyx-weather", "--section", "settings"]]
 
 [bar]
-mode = "interval"
-interval = 600
+mode = "stream"
 section = "right"
 
 [[bar.items]]
 id = "now"
 name = "Current conditions"
-description = "Click opens Nyx Weather; right-click its settings."
+description = "Click for the forecast; right-click opens Nyx Weather."
 default = true
 
 [desktop]
@@ -51,3 +50,7 @@ sizes = ["2x1", "1x1"]
 icon = "weather-few-clouds-symbolic"
 swatch = "amber"
 default = true
+
+[settings]
+# In the bar: icon (and temperature), condition, or range (today's high and low).
+look = "icon"

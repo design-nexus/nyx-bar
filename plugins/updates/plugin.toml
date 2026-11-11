@@ -1,0 +1,28 @@
+id = "nyx.updates"
+name = "Updates"
+version = "0.1.0"
+author = "Design Nexus"
+license = "MIT"
+description = "How many package updates are waiting (on Arch, from checkupdates); click to see them and update."
+api_version = 1
+kinds = ["bar"]
+exec = ["nyx-bar-updates"]
+
+[permissions]
+network = true
+
+[bar]
+mode = "stream"
+section = "right"
+
+[[bar.items]]
+id = "updates"
+name = "Updates"
+description = "Shown only when updates are waiting."
+default = true
+
+[settings]
+# Minutes between checks.
+interval = 60
+# What Update runs; empty for omarchy-update in a terminal (or pacman -Syu).
+command = []

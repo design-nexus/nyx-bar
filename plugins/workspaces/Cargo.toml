@@ -11,3 +11,4 @@ repository.workspace = true
 nyx-desktop.workspace = true
 nyx-plugin-sdk.workspace = true
 serde_json.workspace = true
+nyx-bar-apps.workspace = true

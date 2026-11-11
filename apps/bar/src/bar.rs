@@ -9,7 +9,7 @@ use crate::dbus;
 use gtk::prelude::*;
 use gtk::{gdk, gio, glib};
 use gtk4_layer_shell::{Edge, KeyboardMode, Layer, LayerShell};
-use nyx_bar_core::{Config, Shown, arrange, should_hide};
+use nyx_bar_core::{Config, Shown, Slot, arrange, should_hide};
 use nyx_desktop::{Desktop, watch};
 use nyx_plugin::{Kind, Plugin, State, discovery, paths};
 use nyx_plugin_host::{self as host, Handle, Report, Spec, frames::Buffers, limits::Limits};
@@ -104,7 +104,11 @@ impl Shared {
     }
 
     fn height(&self) -> i32 {
-        self.config.borrow().height
+        self.config.borrow().height()
+    }
+
+    fn size_name(&self) -> String {
+        self.config.borrow().size_name().to_string()
     }
 }
 
@@ -260,7 +264,7 @@ fn watch_files(s: &Rc<Shared>) {
             let Some(s) = ws.upgrade() else { return };
         match Config::load_layered(&nyx_config::Layers::standard()) {
             Ok(c) => {
-                let height_changed = c.height != s.height();
+                let height_changed = c.height() != s.height() || c.size_name() != s.size_name();
                 *s.config.borrow_mut() = c;
                 if height_changed {
                     for b in s.bars.borrow_mut().drain(..) {
@@ -490,6 +494,9 @@ fn spawn_plugin(s: &Rc<Shared>, p: Plugin, parts: Vec<String>, settings: serde_j
     s.generation.set(generation);
     if !s.visible.get() {
         handle.send(HostMsg::Visible { visible: false, item: None });
+    }
+    if p.manifest.permissions.desktop && s.desktop.borrow().connected {
+        handle.send(HostMsg::Desktop(desktop_state(&s.desktop.borrow())));
     }
     // Replacing an old run drops its handle, which stops it.
     s.plugins.borrow_mut().insert(
@@ -755,6 +762,7 @@ fn new_bar(s: &Rc<Shared>, connector: &str, gmon: &gdk::Monitor) -> Rc<Bar> {
     let window = gtk::Window::new();
     window.set_application(Some(&s.app));
     window.add_css_class("nyx-bar");
+    window.add_css_class(&format!("size-{}", s.size_name()));
     window.set_decorated(false);
     window.init_layer_shell();
     window.set_namespace(Some("nyx-bar"));
@@ -838,22 +846,50 @@ fn relayout(s: &Rc<Shared>, b: &Rc<Bar>) {
     let mut keep = HashSet::new();
     for (bx, list) in b.boxes.iter().zip(arranged.iter()) {
         while let Some(c) = bx.first_child() {
+            // Item roots move out of the groups they were in; the groups are rebuilt.
+            if c.has_css_class("bar-group") {
+                while let Some(i) = c.first_child() {
+                    i.unparent();
+                }
+            }
             bx.remove(&c);
         }
-        for (plugin, item) in list {
-            let key = (plugin.clone(), item.clone());
-            let existing = b.widgets.borrow().get(&key).cloned();
-            let w = match existing {
-                Some(w) => w,
-                None => {
-                    let w = new_item_widget(s, b, plugin, item);
-                    b.widgets.borrow_mut().insert(key.clone(), w.clone());
-                    w
-                }
+        for slot in list {
+            let mut place = |plugin: &String, item: &String, parent: &gtk::Box| {
+                let key = (plugin.clone(), item.clone());
+                let existing = b.widgets.borrow().get(&key).cloned();
+                let w = match existing {
+                    Some(w) => w,
+                    None => {
+                        let w = new_item_widget(s, b, plugin, item);
+                        b.widgets.borrow_mut().insert(key.clone(), w.clone());
+                        w
+                    }
+                };
+                parent.append(&w.root);
+                refresh_widget(s, b, plugin, item);
+                keep.insert(key);
             };
-            refresh_widget(s, b, plugin, item);
-            bx.append(&w.root);
-            keep.insert(key);
+            match slot {
+                Slot::Item((plugin, item)) => place(plugin, item, bx),
+                Slot::Group(items) => {
+                    let group = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+                    group.add_css_class("bar-group");
+                    group.set_valign(gtk::Align::Center);
+                    group.set_hexpand(false);
+                    bx.append(&group);
+                    for (plugin, item) in items {
+                        place(plugin, item, &group);
+                    }
+                    sync_group(&group);
+                }
+                Slot::Divider => {
+                    let d = gtk::Separator::new(gtk::Orientation::Vertical);
+                    d.add_css_class("bar-divider");
+                    d.set_valign(gtk::Align::Center);
+                    bx.append(&d);
+                }
+            }
         }
     }
     b.widgets.borrow_mut().retain(|k, w| {
@@ -868,6 +904,30 @@ fn relayout(s: &Rc<Shared>, b: &Rc<Bar>) {
         }
         kept
     });
+}
+
+/// A pill group shows while any of its items does, and is drawn open while any is.
+fn sync_group(group: &gtk::Box) {
+    let mut any_visible = false;
+    let mut any_open = false;
+    let mut c = group.first_child();
+    while let Some(ch) = c {
+        any_visible |= ch.is_visible();
+        any_open |= ch.is_visible() && ch.has_css_class("open");
+        c = ch.next_sibling();
+    }
+    group.set_visible(any_visible);
+    if any_open {
+        group.add_css_class("open");
+    } else {
+        group.remove_css_class("open");
+    }
+}
+
+fn sync_group_of(root: &gtk::Box) {
+    if let Some(g) = root.parent().and_downcast::<gtk::Box>().filter(|p| p.has_css_class("bar-group")) {
+        sync_group(&g);
+    }
 }
 
 fn item_ctx(s: &Rc<Shared>, plugin: &str, item: &str, connector: &str, max_height: Option<Option<i32>>) -> Option<view::Ctx> {
@@ -911,6 +971,13 @@ fn refresh_widget(s: &Rc<Shared>, b: &Rc<Bar>, plugin: &str, item: &str) {
     let Some(current) = s.plugins.borrow().get(plugin).and_then(|r| item_for(r, item, &b.connector).cloned()) else { return };
     w.root.set_visible(current.visible);
     w.root.set_tooltip_text(current.tooltip.as_deref());
+    let popover_open = w.popover.borrow().as_ref().is_some_and(|(p, _)| p.is_visible());
+    if current.open || popover_open {
+        w.root.add_css_class("open");
+    } else {
+        w.root.remove_css_class("open");
+    }
+    sync_group_of(&w.root);
     if w.last.borrow().as_ref() == Some(&current) {
         return;
     }
@@ -923,9 +990,10 @@ fn refresh_widget(s: &Rc<Shared>, b: &Rc<Bar>, plugin: &str, item: &str) {
         w.root.remove(&old.root);
     }
     w.root.append(&rendered.root);
-    for c in w.root.css_classes() {
-        if c.starts_with("item-class-") {
-            w.root.remove_css_class(&c);
+    // The classes the item asked for before and doesn't now.
+    if let Some(old) = w.last.borrow().as_ref() {
+        for c in old.class.iter().filter(|c| !current.class.contains(c) && c.as_str() != "open") {
+            w.root.remove_css_class(c);
         }
     }
     for c in &current.class {
@@ -944,6 +1012,10 @@ fn new_item_widget(s: &Rc<Shared>, b: &Rc<Bar>, plugin: &str, item: &str) -> Rc<
     let safe: String = item.chars().map(|c| if c.is_ascii_alphanumeric() || c == '-' { c } else { '_' }).collect();
     root.add_css_class(&format!("item-{safe}"));
     root.set_valign(gtk::Align::Fill);
+    // Its popover is a child too: without this, a popover view that expands (a calendar's
+    // agenda) would make the item expand across the bar.
+    root.set_hexpand(false);
+    root.set_vexpand(false);
     let w = Rc::new(ItemWidget {
         root: root.clone(),
         rendered: RefCell::default(),
@@ -1065,7 +1137,11 @@ fn fill_popover(s: &Rc<Shared>, b: &Rc<Bar>, w: &Rc<ItemWidget>, plugin: &str, i
         p.connect_closed(move |_| {
             let (Some(s), Some(b)) = (ws.upgrade(), wb.upgrade()) else { return };
             if let Some(r) = wr.upgrade() {
-                r.remove_css_class("open");
+                let still = s.plugins.borrow().get(&pid).and_then(|run| item_for(run, &iid, &b.connector)).is_some_and(|i| i.open);
+                if !still {
+                    r.remove_css_class("open");
+                }
+                sync_group_of(&r);
             }
             b.window.set_keyboard_mode(KeyboardMode::None);
             send_event(&s, &pid, &iid, &b.connector, EventKind::PopoverClose, None, None, None, None, None);
@@ -1083,6 +1159,7 @@ fn open_popover(s: &Rc<Shared>, b: &Rc<Bar>, w: &Rc<ItemWidget>, plugin: &str, i
         b.window.set_keyboard_mode(KeyboardMode::OnDemand);
     }
     w.root.add_css_class("open");
+    sync_group_of(&w.root);
     pop.popup();
     if std::env::var_os("NYX_BAR_DUMP").is_some() {
         let p2 = pop.clone();

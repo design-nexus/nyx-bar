@@ -1,0 +1,24 @@
+id = "nyx.recording"
+name = "Screen recording"
+version = "0.1.0"
+author = "Design Nexus"
+license = "MIT"
+description = "While Nyx Capture records the screen: a red dot and the time. Click to stop; right-click to pause."
+api_version = 1
+kinds = ["bar"]
+exec = ["nyx-bar-recording"]
+needs = ["nyx-capture"]
+
+[permissions]
+# Documentation for this trusted plugin; a third-party copy would need these.
+host_commands = [["nyx-capture", "--record", "--stop"], ["nyx-capture", "--record", "--pause"]]
+
+[bar]
+mode = "stream"
+section = "right"
+
+[[bar.items]]
+id = "recording"
+name = "Recording timer"
+description = "Shown only while recording."
+default = true

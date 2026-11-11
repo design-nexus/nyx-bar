@@ -1,0 +1,28 @@
+id = "nyx.window"
+name = "Window"
+version = "0.1.0"
+author = "Design Nexus"
+license = "MIT"
+description = "The focused window: its app's icon and name, and its title."
+api_version = 1
+kinds = ["bar"]
+exec = ["nyx-bar-window"]
+
+[permissions]
+# The focused window's class and title.
+desktop = true
+
+[bar]
+mode = "stream"
+section = "left"
+
+[[bar.items]]
+id = "window"
+name = "Focused window"
+default = true
+
+[settings]
+# Show the title after the app's name.
+title = true
+# Titles longer than this end in an ellipsis.
+max_chars = 48

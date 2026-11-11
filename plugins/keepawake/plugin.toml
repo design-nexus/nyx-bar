@@ -1,0 +1,18 @@
+id = "nyx.keepawake"
+name = "Keep awake"
+version = "0.1.0"
+author = "Design Nexus"
+license = "MIT"
+description = "A cup that keeps the computer awake while it's on: no screen lock, screen off or suspend. The same switch as Control Center's Keep awake."
+api_version = 1
+kinds = ["bar"]
+exec = ["nyx-bar-keepawake"]
+
+[bar]
+mode = "stream"
+section = "right"
+
+[[bar.items]]
+id = "keepawake"
+name = "Keep awake"
+default = false

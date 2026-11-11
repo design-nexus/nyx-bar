@@ -1,0 +1,13 @@
+[package]
+name = "nyx-bar-window"
+version = "0.1.0"
+description = "Nyx Bar plugin: the focused window's app and title"
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+nyx-bar-apps.workspace = true
+nyx-plugin-sdk.workspace = true
+serde_json.workspace = true

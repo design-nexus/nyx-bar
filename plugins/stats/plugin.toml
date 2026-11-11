@@ -1,9 +1,9 @@
 id = "nyx.stats"
 name = "System stats"
-version = "0.1.0"
+version = "0.2.0"
 author = "Design Nexus"
 license = "MIT"
-description = "CPU, memory, temperature and GPU. Click for the last few minutes as graphs; right-click opens Nyx Activity."
+description = "CPU, memory, temperature and GPU. Click for graphs, each core, disk, network and the busiest apps; right-click opens Nyx Activity."
 api_version = 1
 kinds = ["bar", "desktop"]
 exec = ["nyx-bar-stats"]
@@ -34,7 +34,7 @@ default = true
 [settings]
 # Seconds between samples.
 every = 3
-# Small graphs in the bar instead of numbers.
-graphs = false
+# In the bar: spark (a CPU graph), text (CPU, memory, temperature) or rings.
+look = "spark"
 # Show the GPU when one reports its load.
 gpu = true

@@ -20,3 +20,11 @@ section = "right"
 id = "tray"
 name = "Tray icons"
 default = true
+
+[settings]
+# Icons beyond the first few wait in a drawer behind a chevron.
+drawer = true
+# How many stay on the bar when none are pinned.
+keep = 3
+# Apps whose icons always stay on the bar, by name ("Discord", "Nextcloud").
+pinned = []
