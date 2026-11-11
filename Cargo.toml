@@ -37,14 +37,14 @@ gtk4-layer-shell = "0.8"
 libc = "0.2"
 nyx-bar-apps = { path = "crates/nyx-bar-apps" }
 nyx-config = { git = "https://github.com/nyxos-project/nyx-system.git", rev = "f68ecc891cd0d5a36b6ed29e93ed5ffc52e77acc", features = ["watch"] }
-nyx-desktop = { git = "https://github.com/design-nexus/nyx-core.git", rev = "51d82b7be343416339f87b10d6bb633a437b7c35", default-features = false }
+nyx-desktop = { git = "https://github.com/design-nexus/nyx-core.git", rev = "166ff17bdb09dd6c5f130fd28ecf81d1f8a59d2d", default-features = false }
 # The plugin system: nyx-core, and its GTK drawing in nyx-design.
-nyx-plugin = { git = "https://github.com/design-nexus/nyx-core.git", rev = "51d82b7be343416339f87b10d6bb633a437b7c35" }
-nyx-plugin-host = { git = "https://github.com/design-nexus/nyx-core.git", rev = "51d82b7be343416339f87b10d6bb633a437b7c35" }
-nyx-plugin-protocol = { git = "https://github.com/design-nexus/nyx-core.git", rev = "51d82b7be343416339f87b10d6bb633a437b7c35" }
-nyx-plugin-sdk = { git = "https://github.com/design-nexus/nyx-core.git", rev = "51d82b7be343416339f87b10d6bb633a437b7c35" }
-nyx-plugin-view = { git = "https://github.com/design-nexus/nyx-design.git", rev = "034fabeb023194079057dfb7751d7e8adce8b0bd" }
-nyx-theme = { git = "https://github.com/design-nexus/nyx-design.git", rev = "034fabeb023194079057dfb7751d7e8adce8b0bd" }
+nyx-plugin = { git = "https://github.com/design-nexus/nyx-core.git", rev = "166ff17bdb09dd6c5f130fd28ecf81d1f8a59d2d" }
+nyx-plugin-host = { git = "https://github.com/design-nexus/nyx-core.git", rev = "166ff17bdb09dd6c5f130fd28ecf81d1f8a59d2d" }
+nyx-plugin-protocol = { git = "https://github.com/design-nexus/nyx-core.git", rev = "166ff17bdb09dd6c5f130fd28ecf81d1f8a59d2d" }
+nyx-plugin-sdk = { git = "https://github.com/design-nexus/nyx-core.git", rev = "166ff17bdb09dd6c5f130fd28ecf81d1f8a59d2d" }
+nyx-plugin-view = { git = "https://github.com/design-nexus/nyx-design.git", rev = "604b46a71bedc340779cddfc27c438c52da90061" }
+nyx-theme = { git = "https://github.com/design-nexus/nyx-design.git", rev = "604b46a71bedc340779cddfc27c438c52da90061" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"
