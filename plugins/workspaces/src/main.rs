@@ -41,9 +41,15 @@ fn busy_numbers(d: &Desktop, monitor: &str, base: i64) -> Vec<i64> {
     let own = d.own_workspaces(monitor);
     d.workspaces
         .iter()
-        .filter(|w| w.windows > 0 && USER_WORKSPACES.contains(&(w.id - base)) && (!own || w.monitor == monitor))
-        .map(|w| w.id - base)
+        .filter(|w| w.windows > 0 && USER_WORKSPACES.contains(&(w.home_id() - base)) && (!own || w.monitor == monitor))
+        .map(|w| w.home_id() - base)
         .collect()
+}
+
+/// The workspace a monitor shows, as the bar numbers it: a fullscreen window's own
+/// workspace is the one it came from.
+fn shown_workspace(d: &Desktop, monitor: &nyx_desktop::model::Monitor) -> i64 {
+    d.workspaces.iter().find(|w| w.id == monitor.active_workspace).map_or(monitor.active_workspace, |w| w.home_id())
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -69,7 +75,8 @@ impl Look {
 
 /// A workspace's windows, most recently focused first: (class, title).
 fn windows_on(d: &Desktop, id: i64) -> Vec<(String, String)> {
-    let mut w: Vec<_> = d.windows.iter().filter(|w| w.workspace == id && !w.hidden).collect();
+    let home = |ws: i64| d.workspaces.iter().find(|w| w.id == ws).map_or(ws, |w| w.home_id());
+    let mut w: Vec<_> = d.windows.iter().filter(|w| home(w.workspace) == id && !w.hidden).collect();
     w.sort_by_key(|w| w.focus_order);
     w.into_iter().map(|w| (w.class.clone(), w.title.clone())).collect()
 }
@@ -136,7 +143,7 @@ fn draw(plugin: &Plugin<Arc<Desktop>>, d: &Desktop, count: i64, look: Look) {
     for m in d.monitors.iter().filter(|m| !m.disabled) {
         let base = base_of(d, &m.name);
         let busy = busy_numbers(d, &m.name, base);
-        let active = test_active().unwrap_or(m.active_workspace - base);
+        let active = test_active().unwrap_or(shown_workspace(d, m) - base);
         let last = busy.iter().copied().chain([count, active.min(*USER_WORKSPACES.end())]).max().unwrap_or(count);
         let mut nodes = vec![];
         for n in 1..=last.min(*USER_WORKSPACES.end()) {
@@ -205,7 +212,7 @@ fn main() {
                     let base = base_of(d, &m.name);
                     let busy = busy_numbers(d, &m.name, base);
                     let last = busy.iter().copied().chain([count]).max().unwrap_or(count);
-                    let cur = m.active_workspace - base;
+                    let cur = shown_workspace(d, m) - base;
                     let next = if up { cur - 1 } else { cur + 1 };
                     let next = match (next < 1, next > last) {
                         (true, _) if wrap => last,
