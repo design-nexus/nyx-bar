@@ -4,8 +4,7 @@
   padding: 0 2px;
 }
 
-&.bar-item:hover,
-&.bar-item.open {
+&.bar-item:hover {
   background: none;
 }
 

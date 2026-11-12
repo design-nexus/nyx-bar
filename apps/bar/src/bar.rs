@@ -906,17 +906,14 @@ fn relayout(s: &Rc<Shared>, b: &Rc<Bar>) {
     });
 }
 
-/// A pill group shows while any of its items does, and is drawn open while any is. Its
-/// first and last shown items are marked `group-first` and `group-last` (hidden ones
+/// A pill group shows while any of its items does. Its first and last shown items are marked `group-first` and `group-last` (hidden ones
 /// still count for CSS's :first-child).
 fn sync_group(group: &gtk::Box) {
     let mut any_visible = false;
-    let mut any_open = false;
     let mut shown = vec![];
     let mut c = group.first_child();
     while let Some(ch) = c {
         any_visible |= ch.is_visible();
-        any_open |= ch.is_visible() && ch.has_css_class("open");
         ch.remove_css_class("group-first");
         ch.remove_css_class("group-last");
         if ch.is_visible() {
@@ -929,11 +926,6 @@ fn sync_group(group: &gtk::Box) {
         last.add_css_class("group-last");
     }
     group.set_visible(any_visible);
-    if any_open {
-        group.add_css_class("open");
-    } else {
-        group.remove_css_class("open");
-    }
 }
 
 fn sync_group_of(root: &gtk::Box) {

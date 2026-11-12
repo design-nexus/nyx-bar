@@ -26,11 +26,6 @@ window.nyx-bar {
   border-radius: 8px;
   background-color: alpha(@theme_text, 0.055);
   border-spacing: 1px;
-  transition: background-color 120ms ease;
-}
-
-.bar-group.open {
-  background-color: mix(@theme_panel, @theme_accent, 0.14);
 }
 
 .bar-divider {
@@ -58,19 +53,7 @@ window.nyx-bar {
   background-color: alpha(@theme_text, 0.07);
 }
 
-.bar-item.open {
-  background-color: mix(@theme_panel, @theme_accent, 0.2);
-}
-
-/* The item's own icons: its popover is a child of the item too. */
-.bar-item.open > image,
-.bar-item.open > :not(popover) image {
-  color: @theme_accent;
-}
-
-.bar-group.open .bar-item.open {
-  background-color: transparent;
-}
+/* An open popover or menu tints nothing: items light on hover only. */
 
 .bar-item > :not(popover) label,
 .bar-item > label {

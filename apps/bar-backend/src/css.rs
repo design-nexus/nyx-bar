@@ -32,9 +32,10 @@ pub fn compile(css: &str) -> Value {
 /// The user's `~/.config/nyx/bar.css`, as the GTK bar reads it: rules for every item
 /// (their selectors may name an item's classes, `.bar-item`, `.plugin-<id>`), and the
 /// bar's own parts by their GTK names: the bar (`window.nyx-bar`, `.bar-sections`),
-/// pills (`.bar-group`, `.bar-group.open`) and dividers (`.bar-divider`).
+/// pills (`.bar-group`) and dividers (`.bar-divider`). Pills aren't tinted while open, so
+/// `.bar-group.open` is left out.
 pub fn user(css: &str) -> Value {
-    let (mut items, mut bar, mut group, mut group_open, mut divider) = (vec![], Map::new(), Map::new(), Map::new(), Map::new());
+    let (mut items, mut bar, mut group, mut divider) = (vec![], Map::new(), Map::new(), Map::new());
     for (prelude, body) in blocks(css) {
         if prelude.starts_with('@') {
             continue;
@@ -47,9 +48,11 @@ pub fn user(css: &str) -> Value {
             // The window around everything says nothing for QML's rules.
             let parts: Vec<&str> =
                 sel.split_whitespace().filter(|p| *p != ">").skip_while(|p| matches!(*p, "window.nyx-bar" | ".nyx-bar" | "window")).collect();
+            if matches!(parts.as_slice(), [p] if p.starts_with(".bar-group") && p.contains(".open")) {
+                continue;
+            }
             let into = match parts.as_slice() {
                 [] | [".bar-sections"] => Some(&mut bar),
-                [p] if p.starts_with(".bar-group") && p.contains(".open") => Some(&mut group_open),
                 [p] if p.starts_with(".bar-group") => Some(&mut group),
                 [p] if p.starts_with(".bar-divider") => Some(&mut divider),
                 _ => None,
@@ -64,7 +67,7 @@ pub fn user(css: &str) -> Value {
             items.push(json!({ "sel": compounds, "spec": spec, "props": Value::Object(props.clone()) }));
         }
     }
-    json!({ "items": items, "bar": bar, "group": group, "groupOpen": group_open, "divider": divider })
+    json!({ "items": items, "bar": bar, "group": group, "divider": divider })
 }
 
 fn blocks(css: &str) -> Vec<(String, String)> {
@@ -419,7 +422,8 @@ mod tests {
         );
         assert_eq!(u["bar"]["background-color"], json!({ "hex": "#101010" }));
         assert_eq!(u["group"]["border-radius"], 6.0);
-        assert_eq!(u["groupOpen"]["background-color"], json!({ "t": "accent" }));
+        assert_eq!(u["group"]["background-color"], json!({ "t": "text", "a": 0.1 }), ".bar-group.open is left out");
+        assert!(u.get("groupOpen").is_none());
         assert_eq!(u["divider"]["background-color"], json!({ "hex": "#ff0000" }));
         let items = u["items"].as_array().unwrap();
         assert_eq!(items.len(), 2);

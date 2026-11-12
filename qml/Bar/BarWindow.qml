@@ -89,7 +89,7 @@ PanelWindow {
         return out;
     }
 
-    // A pill: related items on one faint background, tinted while one of them is open.
+    // A pill: related items on one faint background (never tinted while one is open).
     component Pill: Rectangle {
         id: pill
         required property var w
@@ -97,32 +97,17 @@ PanelWindow {
         // What shows comes from the items' state, not from the children's visibility:
         // a hidden pill's children are hidden too and could never bring it back.
         readonly property var shownKeys: keys.filter(k => w.itemShown(k))
-        property bool lit: false
-        function relight() {
-            let on = false;
-            for (let i = 0; i < rep.count; i++) {
-                const it = rep.itemAt(i);
-                on = on || (!!it && it.shownOnBar && it.isOpen);
-            }
-            lit = on;
-        }
         visible: shownKeys.length > 0
         implicitWidth: pillRow.implicitWidth + 6
         implicitHeight: w.size.group
         radius: w.user.group && w.user.group["border-radius"] !== undefined ? w.user.group["border-radius"] : w.size.radius
-        color: lit ? w.userColor("groupOpen", Style.mix(Style.panel, Style.accent, 0.14)) : w.userColor("group", Style.alpha(Style.text, 0.055))
-        Behavior on color {
-            ColorAnimation {
-                duration: 120
-            }
-        }
+        color: w.userColor("group", Style.alpha(Style.text, 0.055))
         Row {
             id: pillRow
             x: 3
             anchors.verticalCenter: parent.verticalCenter
             spacing: 1
             Repeater {
-                id: rep
                 model: pill.keys
                 delegate: BarItem {
                     required property string modelData
@@ -132,10 +117,6 @@ PanelWindow {
                     // The first and last shown items of the pill get its end padding.
                     first: pill.shownKeys[0] === modelData
                     last: pill.shownKeys[pill.shownKeys.length - 1] === modelData
-                    onIsOpenChanged: pill.relight()
-                    onShownOnBarChanged: pill.relight()
-                    Component.onCompleted: pill.relight()
-                    Component.onDestruction: Qt.callLater(pill.relight)
                 }
             }
         }

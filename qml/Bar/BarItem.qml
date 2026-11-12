@@ -5,7 +5,7 @@ import Nyx.PluginView
 import "hostrules.js" as Host
 
 // One plugin item on the bar: its view, the item's own look from the plugin's CSS (`&`),
-// lit while hovered or open; a click runs its command, opens its popover or menu, or
+// lit while hovered; a click runs its command, opens its popover or menu, or
 // goes to the plugin; scrolling too. Its popover is built ahead, so it opens at once.
 Item {
     id: it
@@ -23,8 +23,8 @@ Item {
     readonly property var rules: win.app.rulesFor(plugin)
     property bool popOpen: false
     property bool menuOpen: false
-    // Lit while its popover is open or the plugin says so; a menu doesn't light it, as in
-    // the GTK bar.
+    // Its popover is open or the plugin says it's open: classed `open` for plugins' CSS
+    // (the bar itself draws nothing for it), and its tooltip stays away.
     readonly property bool isOpen: popOpen || !!(entry && entry.open)
     readonly property var rootClasses: ["bar-item", "plugin-" + plugin.replace(/\./g, "_"), "item-" + itemId.replace(/[^A-Za-z0-9-]/g, "_")]
         .concat(grouped ? ["grouped"] : [], first ? ["group-first"] : [], last ? ["group-last"] : [], isOpen ? ["open"] : [], entry ? (entry["class"] || []) : [])

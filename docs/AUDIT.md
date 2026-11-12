@@ -11,7 +11,9 @@ What a pass over both bars (the GTK `nyx-bar` and NyxOS's Quickshell bar,
 - **Flicker:** an item's tree is rebuilt only when its view changes (not its tooltip,
   classes or open state), and QML rebuilds a view only when its shape changes. The
   bar's state keys monitors by name, so updates stay small.
-- **Control Center** lights nothing in the bar while it's open.
+- **No open tint:** nothing on the bar is tinted while its popover, menu or the Control
+  Center is open (pills and items light on hover only); the tint flickered as it
+  changed and pills and loose items used it differently.
 - **Tooltips** never take the pointer, wrap at 360 px, open below the bar, and only one
   shows at a time. Clicks reach buttons, toggles and sliders inside items.
 - **Popovers** close when the plugin withdraws them, tell the plugin when they're

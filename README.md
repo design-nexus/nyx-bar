@@ -80,21 +80,21 @@ seconds = false
 right = ["nyx.clock"]
 ```
 
-- Entries in brackets share one pill (`["nyx.weather", "nyx.stats"]`); the pill lights
-  while one of them is open. `"|"` draws a thin divider. `"*"` is where enabled items
+- Entries in brackets share one pill (`["nyx.weather", "nyx.stats"]`). Nothing on the
+  bar is tinted while its popover is open. `"|"` draws a thin divider. `"*"` is where enabled items
   the file doesn't place go (another plugin's, AI Hub's), each plugin's in a pill of
   its own.
 - The file is written on first start as the layout above, commented out, so NyxOS's
   layout applies until you change it. The very first bar's file, never edited, is
   replaced by that template on start (kept as `bar.toml.old`).
 - `size` is `compact` (28 px), `default` (32), `cozy` (36) or `spacious` (40); an exact
-  `height` wins over it. Settings → Nyx Bar sets the size, the status pill, the
-  calendar's layout and the workspaces' look.
+  `height` wins over it. Settings → Bar sets the size, the status pill, the clock and
+  the workspaces' look.
 
 Which items show at all is in `~/.config/nyx/plugins.toml` (`nyx plugin configure`).
 Restyle anything in `~/.config/nyx/bar.css`. The Quickshell interface reads the same
 file: rules for items (`.bar-item`, `.plugin-<id>`, and what's inside them), the bar
-(`window.nyx-bar`), pills (`.bar-group`, `.bar-group.open`) and dividers (`.bar-divider`).
+(`window.nyx-bar`), pills (`.bar-group`) and dividers (`.bar-divider`).
 
 ## Build
 

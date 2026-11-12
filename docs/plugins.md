@@ -120,10 +120,9 @@ in a key cap before the label, "EN"), `enabled` (a disabled entry without an `id
 dim line, a hint), `separator`, `children` (a submenu, opened in place under its entry).
 An `icon` can list fallbacks as in views.
 
-`open: true` says the item has something open that isn't its popover (`nyx.system`
-sets it while Control Center shows that item's page). An open item, and the pill its
-group shares in `bar.toml` (`["nyx.weather", "nyx.stats"]`), is lit as while its
-popover shows. The bar's height is in `hello` (`bar_height`): 28, 32, 36 or 40 for
+`open: true` says the item has something open that isn't its popover. The item gets
+the class `open`, as while its popover shows, for your CSS; the bar itself tints
+nothing for it, nor the pill it shares. The bar's height is in `hello` (`bar_height`): 28, 32, 36 or 40 for
 the size presets.
 
 ## Desktop widgets

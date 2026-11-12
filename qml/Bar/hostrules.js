@@ -80,10 +80,7 @@ const rules = [
     rule("button.flat:hover", { "background-color": c("text", 0.08) }),
     rule("button.suggested-action", { color: c("on_accent"), "background-color": c("accent") }),
     rule("button.link", { padding: [0, 0, 0, 0], "min-height": 0, "background-color": { none: true }, color: c("accent"), "font-size": 12.5, "font-weight": 500 }),
-    // The bar's items: hover and open, the item's own icons accented while open.
+    // The bar's items light on hover only; an open popover or menu doesn't tint them.
     rule("&.bar-item:hover", { "background-color": c("text", 0.07) }),
-    rule("&.bar-item.open", { "background-color": { mix: [c("panel"), c("accent"), 0.2] } }),
-    rule("&.bar-item.open image", { color: c("accent") }),
-    rule("&.bar-item.grouped.open", { "background-color": { none: true } }),
     rule("&.bar-item.recording", { color: c("danger"), "background-color": c("danger", 0.12) }),
 ]
