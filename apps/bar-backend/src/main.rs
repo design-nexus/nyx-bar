@@ -35,6 +35,14 @@ fn handle(s: &std::rc::Rc<host::Shared>, req: nyx_ui_link::Request) {
     let str_of = |k: &str| b.get(k).and_then(Value::as_str).unwrap_or_default().to_string();
     let (monitor, plugin, item) = (str_of("monitor"), str_of("plugin"), str_of("item"));
     let reply = match req.op.as_str() {
+        // `nyx-bar --focus`: the bar on the focused monitor takes the keyboard.
+        "Focus" => {
+            let Some(m) = host::focused_monitor(s) else {
+                return req.err("not_found", "no monitor has the focus");
+            };
+            s.link.emit("Focus", json!({"monitor": m}));
+            json!({})
+        }
         "Click" => {
             let button = b.get("button").and_then(Value::as_u64).unwrap_or(1) as u32;
             json!({"did": host::click(s, &plugin, &item, &monitor, button, host::anchor_of(&monitor, &b))})

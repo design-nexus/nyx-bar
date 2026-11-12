@@ -318,6 +318,11 @@ pub fn schedule_sync(s: &Rc<Shared>) {
 }
 
 /// The interface's state, once however many changes come together.
+/// The monitor with the focus, if Hyprland has said.
+pub fn focused_monitor(s: &Shared) -> Option<String> {
+    s.desktop.borrow().focused_monitor().map(|m| m.name.clone())
+}
+
 pub fn publish(s: &Rc<Shared>) {
     if s.publish_pending.replace(true) {
         return;

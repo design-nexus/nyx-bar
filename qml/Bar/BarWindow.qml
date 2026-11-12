@@ -41,7 +41,24 @@ PanelWindow {
     color: userColor("bar", Style.panel)
     WlrLayershell.layer: WlrLayer.Top
     WlrLayershell.namespace: "nyx-bar"
-    WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
+    WlrLayershell.keyboardFocus: keyboardMode ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
+
+    // The keyboard on the bar (`nyx-bar --focus`): its first item takes the focus; an
+    // item's Escape gives it back.
+    property bool keyboardMode: false
+    onKeyboardModeChanged: if (keyboardMode)
+        Qt.callLater(() => {
+            const first = contentItem.nextItemInFocusChain(true);
+            if (first)
+                first.forceActiveFocus(Qt.TabFocusReason);
+        })
+    Connections {
+        target: win.client
+        function onEvent(ev, body) {
+            if (ev === "Focus" && body.monitor === win.name && Quickshell.env("NYX_SHELL_NO_KEYBOARD") !== "1")
+                win.keyboardMode = true;
+        }
+    }
 
     // Short of room, titles give way: items' labels marked `shrink` give up this share
     // of their spare width (as GTK ellipsizes them). Worked out after layout, not in a

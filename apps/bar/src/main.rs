@@ -45,6 +45,19 @@ fn main() -> std::process::ExitCode {
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "--only" => only = args.next(),
+            "--focus" => {
+                return match switch::forward("nyx-bar", "Focus", serde_json::json!({})) {
+                    Some(Ok(_)) => std::process::ExitCode::SUCCESS,
+                    Some(Err(e)) => {
+                        eprintln!("nyx-bar: {e}");
+                        std::process::ExitCode::FAILURE
+                    }
+                    None => {
+                        eprintln!("nyx-bar: the bar isn't running");
+                        std::process::ExitCode::FAILURE
+                    }
+                };
+            }
             "--layout-json" => {
                 let plugins = nyx_plugin::discovery::discover().plugins;
                 let json = nyx_bar_core::layout_json(&nyx_config::Layers::standard(), &plugins, &nyx_plugin::State::load());
@@ -79,11 +92,12 @@ fn main() -> std::process::ExitCode {
             }
             "-h" | "--help" => {
                 println!(
-                    "Usage: nyx-bar [--only <output>] [--layout-json] [--ui [qml|gtk]]\n\n\
+                    "Usage: nyx-bar [--only <output>] [--layout-json] [--ui [qml|gtk]] [--focus]\n\n\
                      Runs the bar (normally as the nyx-bar user service).\n\
                      --only          show the bar on this output only (e.g. HEADLESS-1), as a test copy\n\
                      --layout-json   print the layout in use, its entries' names and what it doesn't place\n\
-                     --ui            use the Quickshell (qml) or the GTK interface; alone, show which\n\n\
+                     --ui            use the Quickshell (qml) or the GTK interface; alone, show which\n\
+                     --focus         give the running bar the keyboard (Quickshell bar)\n\n\
                      Plugins: `nyx plugin list`, `nyx plugin add`, `nyx plugin configure`.\n\
                      Layout: ~/.config/nyx/bar.toml. Style: ~/.config/nyx/bar.css."
                 );

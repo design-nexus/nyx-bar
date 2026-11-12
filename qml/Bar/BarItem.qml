@@ -71,6 +71,33 @@ Item {
         }
     }
 
+    // From the keyboard (`nyx-bar --focus`, Super+Ctrl+Alt+B): Enter clicks it, the Menu
+    // key right-clicks it, the arrows move along the bar, Escape leaves.
+    activeFocusOnTab: true
+    Accessible.role: Accessible.Button
+    Accessible.name: (entry && (entry.tooltip || entry.label)) || itemId
+    Accessible.onPressAction: click(1)
+    Keys.onPressed: e => {
+        const forward = e.key === Qt.Key_Right || e.key === Qt.Key_Down;
+        if (e.key === Qt.Key_Return || e.key === Qt.Key_Enter || e.key === Qt.Key_Space) {
+            click(1);
+        } else if (e.key === Qt.Key_Menu || (e.key === Qt.Key_F10 && (e.modifiers & Qt.ShiftModifier))) {
+            click(3);
+        } else if (forward || e.key === Qt.Key_Left || e.key === Qt.Key_Up) {
+            const to = nextItemInFocusChain(forward);
+            if (to)
+                to.forceActiveFocus(Qt.TabFocusReason);
+        } else if (e.key === Qt.Key_Escape) {
+            win.keyboardMode = false;
+        } else {
+            return;
+        }
+        e.accepted = true;
+    }
+    FocusRing {
+        radius_: (it.rs["border-radius"] !== undefined ? it.rs["border-radius"] : 7) + 2
+    }
+
     visible: shownOnBar
     width: visible ? implicitWidth : 0
     implicitWidth: Math.max(rs["min-width"] || 0, view.implicitWidth) + pad[1] + pad[3] + mar[1] + mar[3]
