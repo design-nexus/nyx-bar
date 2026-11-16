@@ -2,8 +2,8 @@
 //! camera (green) or shares the screen (violet), hidden otherwise. The popover says which
 //! apps, since when, with Mute for the microphone and Stop for a screen share.
 //!
-//! PipeWire's graph (`pw-dump`, every three seconds): a running capture stream from an
-//! app is the microphone; a running camera or screencast source is in use, by whatever
+//! PipeWire's graph (one `pw-dump --monitor`, followed as it changes): a running capture
+//! stream from an app is the microphone; a running camera or screencast source is in use, by whatever
 //! its links lead to. Apps that open `/dev/video*` themselves are found in `/proc`.
 
 use nyx_plugin_sdk::protocol::EventKind;
@@ -118,9 +118,58 @@ fn from_proc() -> Vec<Use> {
     uses
 }
 
-fn scan(ignore: &[String]) -> Vec<Use> {
-    let out = std::process::Command::new("pw-dump").stdin(std::process::Stdio::null()).stderr(std::process::Stdio::null()).output();
-    let dump: Vec<Value> = out.ok().and_then(|o| serde_json::from_slice(&o.stdout).ok()).unwrap_or_default();
+/// PipeWire's objects by id, as `pw-dump --monitor` reports them.
+type Graph = std::sync::Arc<std::sync::Mutex<HashMap<u64, Value>>>;
+
+/// Apply one `pw-dump --monitor` update: objects replace theirs, `"info": null` removes.
+fn apply(graph: &mut HashMap<u64, Value>, update: Vec<Value>) {
+    for o in update {
+        let Some(id) = o["id"].as_u64() else { continue };
+        if o.get("info").is_some_and(Value::is_null) {
+            graph.remove(&id);
+        } else {
+            graph.insert(id, o);
+        }
+    }
+}
+
+/// Follow PipeWire's graph with one long-running `pw-dump --monitor`, poking `changed`
+/// after each update; started again (after a pause) when it ends.
+fn follow(graph: Graph, changed: std::sync::mpsc::Sender<()>) {
+    std::thread::spawn(move || {
+        loop {
+            let child = std::process::Command::new("pw-dump")
+                .args(["--monitor", "--no-colors"])
+                .stdin(std::process::Stdio::null())
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::null())
+                .spawn();
+            if let Ok(mut child) = child {
+                if let Some(out) = child.stdout.take() {
+                    for update in serde_json::Deserializer::from_reader(std::io::BufReader::new(out)).into_iter::<Vec<Value>>() {
+                        let Ok(update) = update else { break };
+                        if let Ok(mut g) = graph.lock() {
+                            apply(&mut g, update);
+                        }
+                        if changed.send(()).is_err() {
+                            let _ = child.kill();
+                            return;
+                        }
+                    }
+                }
+                let _ = child.kill();
+                let _ = child.wait();
+            }
+            if let Ok(mut g) = graph.lock() {
+                g.clear();
+            }
+            std::thread::sleep(Duration::from_secs(10));
+        }
+    });
+}
+
+fn scan(graph: &Graph, ignore: &[String]) -> Vec<Use> {
+    let dump: Vec<Value> = graph.lock().map(|g| g.values().cloned().collect()).unwrap_or_default();
     let mut uses = from_graph(&dump, ignore);
     uses.extend(from_proc());
     uses.sort();
@@ -236,11 +285,20 @@ fn main() {
     let send = plugin.data();
     let (tx, rx) = std::sync::mpsc::channel::<()>();
     let ig = ignore.clone();
+    let graph: Graph = Default::default();
+    follow(graph.clone(), tx.clone());
     std::thread::spawn(move || {
+        let mut last: Option<Vec<Use>> = None;
         loop {
             let list = ig.lock().map(|l| l.clone()).unwrap_or_default();
-            send(scan(&list));
+            let uses = scan(&graph, &list);
+            if last.as_ref() != Some(&uses) {
+                send(uses.clone());
+                last = Some(uses);
+            }
+            // Graph changes wake this at once; the timeout is for cameras opened directly.
             let _ = rx.recv_timeout(Duration::from_secs(3));
+            while rx.try_recv().is_ok() {}
         }
     });
     plugin.item(item(ITEM).hidden(true));
@@ -300,6 +358,15 @@ mod tests {
         let mut p = props;
         p["media.class"] = json!(class);
         json!({ "id": id, "type": "PipeWire:Interface:Node", "info": { "state": state, "props": p } })
+    }
+
+    #[test]
+    fn monitor_updates_replace_and_remove_objects() {
+        let mut g = HashMap::new();
+        apply(&mut g, serde_json::from_str(r#"[{"id":1,"info":{"state":"idle"}},{"id":2,"info":{}}]"#).unwrap());
+        apply(&mut g, serde_json::from_str(r#"[{"id":1,"info":{"state":"running"}},{"id":2,"info":null}]"#).unwrap());
+        assert_eq!(g.len(), 1);
+        assert_eq!(g[&1]["info"]["state"], "running");
     }
 
     #[test]
