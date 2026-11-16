@@ -22,7 +22,7 @@ nyx-desktop = { git = "https://github.com/design-nexus/nyx-core.git", rev = "94e
 nyx-plugin.workspace = true
 nyx-plugin-host.workspace = true
 nyx-plugin-protocol.workspace = true
-nyx-theme-core = { git = "https://github.com/design-nexus/nyx-design.git", rev = "6c139d893bdb01f3bd87801e08361b3b3c36591e" }
+nyx-theme-core = { git = "https://github.com/design-nexus/nyx-design.git", rev = "ea8839d237a23ec83887429475f0780c06a36826" }
 nyx-ui-link = { git = "https://github.com/design-nexus/nyx-core.git", rev = "94e0c8aa133074c74adb31365e51f56168114f68" }
 serde_json.workspace = true
 toml.workspace = true
