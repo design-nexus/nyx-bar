@@ -6,6 +6,8 @@ the clock included, is a plugin, and plugins never need the bar rebuilt.
 
 ## Install
 
+On NyxOS, the bar comes with the system. On Omarchy:
+
 ```sh
 curl -fsSL https://raw.githubusercontent.com/design-nexus/nyx-bar/main/install.sh | bash
 ```
@@ -13,7 +15,7 @@ curl -fsSL https://raw.githubusercontent.com/design-nexus/nyx-bar/main/install.s
 or from a checkout, `./install.sh`. It installs `nyx-bar`, `nyx-plugin` and the
 first-party plugins (to `~/.local/lib/nyx/plugins`), and a user service that isn't
 turned on. Try the bar with `nyx-bar`; run it at login with
-`systemctl --user enable --now nyx-bar`. On NyxOS it comes with the system.
+`systemctl --user enable --now nyx-bar`.
 
 It needs GTK 4, gtk4-layer-shell, librsvg, bubblewrap and xdg-dbus-proxy.
 
